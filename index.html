@@ -548,7 +548,8 @@ const DIM_ALPHA=0.08; // very dim for non-highlighted when a filter is active
 const SELECTED_COLOR=new THREE.Color(0xff2222); // selected satellite from search
 
 function hasActiveHighlight(){
-  return activeCountryFilter||activePurposeFilter||activeDetailFilter||selectedSat||cmdFilterFn;
+  return activeCountryFilter||activePurposeFilter||activeDetailFilter||cmdFilterFn;
+  // Note: selectedSat alone does NOT trigger dimming — only filters do
 }
 
 function isHighlighted(sat){
@@ -590,7 +591,8 @@ function syncPointCloud(){
     }
 
     cnt++;
-    const hlState=highlighting?isHighlighted(sat):'normal';
+    // Always check selectedSat; only dim others when filters are active
+    const hlState=(selectedSat&&sat===selectedSat)?'selected':(highlighting?isHighlighted(sat):'normal');
 
     // Determine color and brightness
     let c,alpha;
