@@ -2,55 +2,68 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Satellite Tracker</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; color: #fff; font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; touch-action: none; }
-  canvas { display: block; }
+  /* #2: touch-action on canvas only, not body */
+  body { background: #000; color: #fff; font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; }
+  canvas { display: block; touch-action: none; }
 
   #ui {
     position: fixed; top: 0; left: 0; width: 300px; padding: 16px;
     background: rgba(0,0,0,0.88); border-right: 1px solid #222;
     height: 100vh; overflow-y: auto; z-index: 10;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: touch; touch-action: auto;
   }
   h1 { font-size: 13px; color: #7affc1; margin-bottom: 3px; letter-spacing: 2px; }
-  .subtitle { font-size: 10px; color: #666; margin-bottom: 14px; }
-  .stat { font-size: 10px; color: #888; margin-bottom: 3px; }
+  /* #14: improved font sizes and contrast */
+  .subtitle { font-size: 11px; color: #888; margin-bottom: 14px; }
+  .stat { font-size: 11px; color: #999; margin-bottom: 3px; }
   .stat span { color: #7affc1; }
 
   .section { margin-top: 12px; border-top: 1px solid #222; padding-top: 10px; }
-  .section label { font-size: 10px; color: #aaa; display: block; margin-bottom: 5px; }
+  .section label { font-size: 11px; color: #bbb; display: block; margin-bottom: 5px; }
   .section input[type=range] {
     width: 100%; -webkit-appearance: none; background: #222; height: 3px;
     border-radius: 2px; outline: none;
   }
   .section input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 16px; height: 16px;
+    -webkit-appearance: none; width: 18px; height: 18px;
     background: #7affc1; border-radius: 50%; cursor: pointer;
   }
-  .range-labels { display: flex; justify-content: space-between; font-size: 9px; color: #555; margin-top: 2px; }
+  .section input[type=range]::-moz-range-thumb {
+    width: 18px; height: 18px; background: #7affc1; border-radius: 50%; cursor: pointer; border: none;
+  }
+  .range-labels { display: flex; justify-content: space-between; font-size: 10px; color: #777; margin-top: 2px; }
 
   .tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
   .tag {
-    padding: 3px 8px; font-size: 9px; border: 1px solid #333; border-radius: 10px;
-    cursor: pointer; background: transparent; color: #666;
+    padding: 4px 9px; font-size: 10px; border: 1px solid #444; border-radius: 10px;
+    cursor: pointer; background: transparent; color: #888;
     font-family: inherit; transition: all 0.2s; white-space: nowrap;
   }
   .tag.active { border-color: #7affc1; color: #7affc1; }
-  .tag.country-active { border-color: #ff9944; color: #ff9944; background: rgba(255,153,68,0.1); }
+  .tag.filter-active { border-color: #ff9944; color: #ff9944; background: rgba(255,153,68,0.1); }
   .tag:hover { border-color: #7affc1; }
-  .tag .count { color: #555; margin-left: 3px; }
-  .tag.country-active .count { color: #cc7733; }
+  .tag .count { color: #666; margin-left: 3px; }
+  .tag.filter-active .count { color: #cc7733; }
+
+  /* #16: reset all button */
+  #reset-all {
+    display: none; margin-top: 8px; padding: 4px 10px; font-size: 10px;
+    background: rgba(255,68,68,0.15); border: 1px solid #ff4444; border-radius: 10px;
+    color: #ff6666; cursor: pointer; font-family: inherit;
+  }
+  #reset-all:hover { background: rgba(255,68,68,0.3); }
 
   #tooltip {
     position: fixed; display: none; background: rgba(0,0,0,0.92);
     border: 1px solid rgba(122,255,193,0.5); padding: 10px 12px; border-radius: 4px;
-    font-size: 10px; pointer-events: none; z-index: 100; max-width: 280px;
+    font-size: 11px; pointer-events: none; z-index: 100; max-width: 280px;
   }
   #tooltip .name { color: #7affc1; font-size: 12px; margin-bottom: 3px; font-weight: bold; }
-  #tooltip .detail { color: #aaa; margin: 1px 0; }
+  #tooltip .detail { color: #bbb; margin: 1px 0; }
 
   #loading {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -62,69 +75,36 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .legend-item { display: flex; align-items: center; font-size: 9px; color: #888; margin: 3px 0; }
+  .legend-item { display: flex; align-items: center; font-size: 10px; color: #999; margin: 3px 0; }
   .legend-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
 
-  /* Tab switcher */
   .tab-bar { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #222; }
   .tab-btn {
-    flex: 1; padding: 8px 0; font-size: 10px; text-align: center; cursor: pointer;
+    flex: 1; padding: 8px 0; font-size: 11px; text-align: center; cursor: pointer;
     background: transparent; border: none; border-bottom: 2px solid transparent;
-    color: #555; font-family: inherit; transition: all 0.2s;
+    color: #666; font-family: inherit; transition: all 0.2s;
   }
   .tab-btn.active { color: #7affc1; border-bottom-color: #7affc1; }
   .tab-btn:hover { color: #7affc1; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
 
-  /* Search panel */
-  #search-input {
-    width: 100%; padding: 8px 10px; background: #111; border: 1px solid #333;
-    color: #fff; font-family: inherit; font-size: 11px; border-radius: 6px;
-    outline: none; margin-bottom: 8px;
-  }
-  #search-input:focus { border-color: #7affc1; }
-  #search-results {
-    max-height: calc(100vh - 160px); overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .search-item {
-    padding: 8px 10px; border-bottom: 1px solid #1a1a1a; cursor: pointer;
-    transition: background 0.15s;
-  }
-  .search-item:hover { background: rgba(122,255,193,0.06); }
-  .search-item .si-name { font-size: 11px; color: #ccc; margin-bottom: 2px; }
-  .search-item .si-name.jpn { color: #ff8866; }
-  .search-item .si-meta { font-size: 9px; color: #555; }
-  .search-item .si-tag {
-    display: inline-block; padding: 1px 5px; font-size: 8px;
-    border: 1px solid #333; border-radius: 6px; margin-right: 3px; color: #666;
-  }
-  .search-item .si-tag.eo { border-color: #7affc1; color: #7affc1; }
-  .search-item .si-tag.comm { border-color: #ffc87a; color: #ffc87a; }
-  .search-item .si-tag.nav { border-color: #ff7aa0; color: #ff7aa0; }
-  .search-item .si-tag.sci { border-color: #c07aff; color: #c07aff; }
-  .search-count { font-size: 9px; color: #555; margin-bottom: 6px; }
-
-  /* Detail panel (shown when satellite selected) */
   #detail-panel {
     position: fixed; bottom: 0; left: 300px; right: 0;
     background: rgba(0,0,0,0.92); border-top: 1px solid #222;
     padding: 14px 20px; z-index: 10; display: none;
     max-height: 200px; overflow-y: auto;
+    transform: translateY(0); transition: transform 0.2s;
   }
   #detail-panel .dp-name { font-size: 14px; color: #7affc1; margin-bottom: 6px; font-weight: bold; }
   #detail-panel .dp-name.jpn { color: #ff8866; }
-  #detail-panel .dp-row { display: inline-block; font-size: 10px; color: #888; margin-right: 16px; margin-bottom: 3px; }
-  #detail-panel .dp-val { color: #ccc; }
+  #detail-panel .dp-row { display: inline-block; font-size: 11px; color: #999; margin-right: 16px; margin-bottom: 3px; }
+  #detail-panel .dp-val { color: #ddd; }
   #detail-panel .dp-close {
     position: absolute; top: 10px; right: 16px; background: none; border: none;
-    color: #555; font-size: 16px; cursor: pointer; font-family: inherit;
+    color: #666; font-size: 18px; cursor: pointer; font-family: inherit;
   }
   #detail-panel .dp-close:hover { color: #fff; }
-  @media (max-width: 768px) {
-    #detail-panel { left: 0; }
-  }
+  /* #21: data freshness */
+  #data-epoch { font-size: 9px; color: #444; margin-top: 4px; }
 
   /* Command Palette */
   #cmd-overlay {
@@ -134,31 +114,31 @@
   }
   #cmd-overlay.open { display: flex; }
   #cmd-box {
-    width: 520px; max-width: 90vw; background: rgba(10,10,20,0.95);
+    width: 520px; max-width: 92vw; background: rgba(10,10,20,0.95);
     border: 1px solid #333; border-radius: 10px; overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8); position: relative;
   }
+  /* #17: mobile close button */
+  #cmd-close {
+    position: absolute; top: 12px; right: 14px; background: none; border: none;
+    color: #555; font-size: 20px; cursor: pointer; font-family: inherit; z-index: 1;
+  }
+  #cmd-close:hover { color: #fff; }
   #cmd-input {
-    width: 100%; padding: 14px 16px; background: transparent; border: none;
+    width: 100%; padding: 14px 40px 14px 16px; background: transparent; border: none;
     border-bottom: 1px solid #222; color: #fff; font-family: inherit;
     font-size: 15px; outline: none;
   }
-  #cmd-input::placeholder { color: #444; }
+  #cmd-input::placeholder { color: #555; }
   #cmd-chips { padding: 6px 12px; min-height: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
   .cmd-chip {
-    padding: 2px 8px; font-size: 9px; border-radius: 8px;
+    padding: 2px 8px; font-size: 10px; border-radius: 8px;
     background: rgba(122,255,193,0.15); color: #7affc1; border: 1px solid rgba(122,255,193,0.3);
   }
-  #cmd-suggest { padding: 6px 12px; display: flex; flex-wrap: wrap; gap: 4px; }
-  .cmd-suggest-btn {
-    padding: 3px 10px; font-size: 9px; border: 1px solid #2a2a2a; border-radius: 10px;
-    background: transparent; color: #555; cursor: pointer; font-family: inherit;
-  }
-  .cmd-suggest-btn:hover { border-color: #7affc1; color: #7affc1; }
   #cmd-results {
     max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
-  #cmd-count { padding: 4px 14px; font-size: 9px; color: #444; }
+  #cmd-count { padding: 4px 14px; font-size: 10px; color: #555; }
   .cmd-item {
     padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #1a1a1a;
     transition: background 0.1s;
@@ -166,29 +146,40 @@
   .cmd-item:hover, .cmd-item.active { background: rgba(122,255,193,0.08); }
   .cmd-item .ci-name { font-size: 12px; color: #ddd; }
   .cmd-item .ci-name.jpn { color: #ff8866; }
-  .cmd-item .ci-sub { font-size: 9px; color: #555; margin-top: 2px; }
+  .cmd-item .ci-sub { font-size: 10px; color: #666; margin-top: 2px; }
   .cmd-item .ci-tag {
-    display: inline-block; padding: 1px 5px; font-size: 8px;
-    border: 1px solid #333; border-radius: 6px; margin-right: 3px; color: #555;
+    display: inline-block; padding: 1px 5px; font-size: 9px;
+    border: 1px solid #444; border-radius: 6px; margin-right: 3px; color: #666;
   }
   .cmd-item .ci-tag.hl { border-color: #7affc1; color: #7affc1; }
+  .cmd-suggest-btn {
+    padding: 4px 10px; font-size: 10px; border: 1px solid #2a2a2a; border-radius: 10px;
+    background: transparent; color: #666; cursor: pointer; font-family: inherit;
+  }
+  .cmd-suggest-btn:hover { border-color: #7affc1; color: #7affc1; }
 
   /* Mobile toggle */
   #ui-toggle {
     display: none; position: fixed; top: 10px; left: 10px; z-index: 20;
     background: rgba(0,0,0,0.8); border: 1px solid #333; border-radius: 6px;
-    color: #7affc1; font-size: 20px; width: 36px; height: 36px;
+    color: #7affc1; font-size: 20px; width: 44px; height: 44px;
     cursor: pointer; font-family: inherit;
   }
   #ui-toggle.open { left: 310px; }
 
-  /* Mobile */
+  /* #15: shortcut hint */
+  .shortcut-hint {
+    position: fixed; bottom: 12px; right: 12px; font-size: 10px; color: #444;
+    z-index: 5; pointer-events: none;
+  }
+
   @media (max-width: 768px) {
     #ui { width: 280px; padding: 14px; transform: translateX(-100%); transition: transform 0.3s; }
     #ui.open { transform: translateX(0); }
     #ui-toggle { display: block; }
-    #tooltip { max-width: 220px; font-size: 9px; }
-    #tooltip .name { font-size: 11px; }
+    #tooltip { max-width: 220px; font-size: 10px; }
+    #detail-panel { left: 0; }
+    .shortcut-hint { display: none; }
   }
 </style>
 </head>
@@ -208,13 +199,14 @@
 
   <div class="tab-bar">
     <button class="tab-btn active" data-tab="filter-tab">フィルター</button>
-    <button class="tab-btn" data-tab="search-tab">検索</button>
+    <button class="tab-btn" id="search-tab-btn">検索 <span style="color:#555;font-size:9px">/</span></button>
   </div>
 
-  <!-- FILTER TAB -->
-  <div class="tab-content active" id="filter-tab">
+  <div id="filter-tab">
     <div class="stat">表示中: <span id="visible-count">0</span> / <span id="total-count">0</span></div>
     <div class="stat">時刻: <span id="update-time">—</span></div>
+    <div id="data-epoch"></div>
+    <button id="reset-all">全フィルター解除</button>
 
     <div class="section">
       <label>国・地域</label>
@@ -248,31 +240,24 @@
       <div class="legend-item"><div class="legend-dot" style="background:#c07aff;"></div>HEO (>36,000 km)</div>
     </div>
   </div>
-
-  <!-- SEARCH TAB -->
-  <div class="tab-content" id="search-tab">
-    <input type="text" id="search-input" placeholder="衛星名、NORAD ID、種別で検索...">
-    <div class="search-count" id="search-count"></div>
-    <div id="search-results"></div>
-  </div>
 </div>
 
 <!-- Command Palette -->
 <div id="cmd-overlay">
   <div id="cmd-box">
+    <button id="cmd-close">&times;</button>
     <input id="cmd-input" type="text" placeholder="衛星名・国・種別で検索... (例: japan sar, leo <500km)" autocomplete="off">
     <div id="cmd-chips"></div>
-    <div id="cmd-suggest"></div>
     <div id="cmd-count"></div>
     <div id="cmd-results"></div>
   </div>
 </div>
 
-<!-- Detail panel (bottom bar) -->
 <div id="detail-panel">
   <button class="dp-close" id="dp-close">&times;</button>
   <div class="dp-name" id="dp-name"></div>
   <div id="dp-info"></div>
+  <div id="dp-live"></div>
 </div>
 
 <div id="tooltip">
@@ -288,19 +273,18 @@
   <div class="detail" id="tt-period"></div>
 </div>
 
+<div class="shortcut-hint">/ で検索</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
 
 <script>
-const EARTH_RADIUS_KM = 6371;
-const DEG2RAD = Math.PI / 180;
-const PI = Math.PI;
+const EARTH_RADIUS_KM=6371, DEG2RAD=Math.PI/180, PI=Math.PI;
+function altToRadius(a){return a<=0?1.01:1+a/EARTH_RADIUS_KM;}
 
-function altToRadius(altKm) { return altKm <= 0 ? 1.01 : 1 + altKm / EARTH_RADIUS_KM; }
+const DATA_FILES=[{file:'data/active.json',label:'全アクティブ衛星'}];
 
-const DATA_FILES = [{ file: 'data/active.json', label: '全アクティブ衛星' }];
-
-const OWNER_NAMES = {
+const OWNER_NAMES={
   'JPN':'日本','US':'アメリカ','CIS':'ロシア/CIS','PRC':'中国','ESA':'ESA','IND':'インド',
   'FR':'フランス','GER':'ドイツ','UK':'イギリス','IT':'イタリア','CA':'カナダ',
   'SKOR':'韓国','SPN':'スペイン','TURK':'トルコ','AUS':'オーストラリア','ARGN':'アルゼンチン',
@@ -308,50 +292,30 @@ const OWNER_NAMES = {
   'FIN':'フィンランド','UAE':'UAE','BRAZ':'ブラジル','ISRA':'イスラエル',
   'EUTE':'Eutelsat','TAIW':'台湾','INDO':'インドネシア','LUXE':'ルクセンブルク',
 };
-const LAUNCH_SITE_NAMES = {
+const LAUNCH_SITE_NAMES={
   'AFETR':'ケープカナベラル','AFWTR':'ヴァンデンバーグ','TANSC':'種子島',
   'PLES':'プレセツク','TYMSC':'バイコヌール','SRILR':'スリハリコタ',
   'JSC':'酒泉','XSC':'西昌','TSC':'太原','WMLP':'ウェンチャン',
   'GUY':'ギアナ','VOST':'ボストチヌイ','KSCUT':'内之浦','SEAL':'海上',
 };
-const OBJ_TYPE_NAMES = {'PAY':'衛星','R/B':'ロケット本体','DEB':'デブリ','TBA':'未分類'};
-
-// Top countries to show as filter buttons (with counts filled at runtime)
-const COUNTRY_FILTERS = [
+const OBJ_TYPE_NAMES={'PAY':'衛星','R/B':'ロケット本体','DEB':'デブリ','TBA':'未分類'};
+const COUNTRY_FILTERS=[
   {code:'JPN',label:'日本'},{code:'US',label:'米国'},{code:'PRC',label:'中国'},
   {code:'UK',label:'英国'},{code:'CIS',label:'ロシア'},{code:'IND',label:'インド'},
   {code:'ESA',label:'ESA'},{code:'FR',label:'仏'},{code:'IT',label:'伊'},
   {code:'SKOR',label:'韓国'},{code:'GER',label:'独'},{code:'CA',label:'加'},
 ];
-
-const ORBIT_CATEGORIES = {
+const ORBIT_CATEGORIES={
   'leo':{label:'LEO',active:true},'meo':{label:'MEO',active:true},
   'geo':{label:'GEO',active:true},'heo':{label:'HEO',active:true},
 };
-
-function classifyOrbit(a){return a<2000?'leo':a<35000?'meo':a<36500?'geo':'heo';}
-function getColorForAltitude(a){return a<2000?new THREE.Color(0x7affc1):a<35000?new THREE.Color(0xffc87a):a<36500?new THREE.Color(0xff7aa0):new THREE.Color(0xc07aff);}
-
-let scene,camera,renderer,earth,atmosphere,satPointCloud;
-let allSatellites=[];
-let satMetadata={};
-let activeCountryFilter=null; // null=all, string=country code
-let activePurposeFilter=null; // null=all, string=purpose key
-let activeDetailFilter=null; // null=all, string or array of detail keys
-
-// Purpose categories for filter buttons
-const PURPOSE_FILTERS = [
-  {key:'Communications',label:'通信'},
-  {key:'Earth Observation',label:'地球観測'},
-  {key:'Navigation/Global Positioning',label:'測位'},
-  {key:'Space Science',label:'宇宙科学'},
-  {key:'Surveillance',label:'監視'},
-  {key:'Technology Development',label:'技術開発'},
-  {key:'Earth Science',label:'地球科学'},
-  {key:'Meteorological',label:'気象'},
+const PURPOSE_FILTERS=[
+  {key:'Communications',label:'通信'},{key:'Earth Observation',label:'地球観測'},
+  {key:'Navigation/Global Positioning',label:'測位'},{key:'Space Science',label:'宇宙科学'},
+  {key:'Surveillance',label:'監視'},{key:'Technology Development',label:'技術開発'},
+  {key:'Earth Science',label:'地球科学'},{key:'Meteorological',label:'気象'},
 ];
-// Detail → Japanese label for tooltip
-const DETAIL_NAMES = {
+const DETAIL_NAMES={
   'Optical Imaging':'光学撮像','Radar Imaging':'レーダー撮像(SAR)',
   'Radar Imaging (SAR)':'SAR撮像','Multispectral Imaging':'マルチスペクトル撮像',
   'Hyperspectral Imaging':'ハイパースペクトル撮像','Infrared Imaging':'赤外撮像',
@@ -364,8 +328,7 @@ const DETAIL_NAMES = {
   'Amateur Radio':'アマチュア無線','Internet of Things (IoT)':'IoT',
   'Data Relay':'データ中継','Remote Sensing':'リモートセンシング',
 };
-// Detail filters — group related types together
-const DETAIL_FILTERS = [
+const DETAIL_FILTERS=[
   {key:'_sar',label:'SAR(レーダー)',match:['Radar Imaging','Radar Imaging (SAR)','Synthetic Aperture Radar (SAR)','Radar Imaging/Earth Science','Radar Surveillance']},
   {key:'_optical',label:'光学撮像',match:['Optical Imaging','Optical Imaging (video)','Optical Imaging/Meterology','Video Imaging','Imaging']},
   {key:'_multi',label:'マルチ/ハイパースペクトル',match:['Multispectral Imaging','Hyperspectral Imaging']},
@@ -377,31 +340,52 @@ const DETAIL_FILTERS = [
   {key:'_earlywarning',label:'早期警戒',match:['Early Warning']},
   {key:'_radio',label:'電波監視',match:['Radio Spectrum Monitoring','Radio Frequency Monitoring']},
 ];
-let mouse=new THREE.Vector2(-999,-999);
+
+function classifyOrbit(a){return a<2000?'leo':a<35000?'meo':a<36500?'geo':'heo';}
+
+// #6: Pre-allocate color constants
+const COLOR_LEO=new THREE.Color(0x7affc1), COLOR_MEO=new THREE.Color(0xffc87a);
+const COLOR_GEO=new THREE.Color(0xff7aa0), COLOR_HEO=new THREE.Color(0xc07aff);
+function getColorForAltitude(a){return a<2000?COLOR_LEO:a<35000?COLOR_MEO:a<36500?COLOR_GEO:COLOR_HEO;}
+
+let scene,camera,renderer,earth,atmosphere,satPointCloud;
+let allSatellites=[], satMetadata={};
+let activeCountryFilter=null, activePurposeFilter=null, activeDetailFilter=null;
+let mouse=new THREE.Vector2(-999,-999), lastMouseX=-999, lastMouseY=-999;
 let raycaster=new THREE.Raycaster();
 raycaster.params.Points.threshold=0.04;
-let isDragging=false,dragMoved=false;
-let prevMouse={x:0,y:0};
-let spherical={theta:0,phi:PI/2,radius:4};
-let touchDist=0;
-let selectedSat=null;
-let flyTarget=null;
-let flyStart=null;
-let orbitLine=null; // THREE.Line for orbital track
-let cmdFilterFn=null; // function(sat)=>bool for command palette live highlight
+let isDragging=false, dragMoved=false, prevMouse={x:0,y:0};
+let spherical={theta:0,phi:PI/2,radius:4}, touchDist=0;
+let selectedSat=null, flyTarget=null, flyStart=null;
+let orbitLine=null, groundTrackLine=null;
+let cmdFilterFn=null;
+let dataEpochStr='';
+
+// #11: period from mean motion (accurate for elliptical orbits)
+function getPeriodMin(sat){return sat.satrec.no>0?(2*PI/sat.satrec.no):90;}
+
+// #10: proper N/S E/W formatting
+function fmtLat(v){return `${Math.abs(v).toFixed(2)}°${v>=0?'N':'S'}`;}
+function fmtLon(v){return `${Math.abs(v).toFixed(2)}°${v>=0?'E':'W'}`;}
 
 // ============================================================
+// #4: Fixed OMM→TLE international designator
 function ommToSatrec(omm){
   const nid=String(omm.NORAD_CAT_ID||0).padStart(5);
   const cls=omm.CLASSIFICATION_TYPE||'U';
-  const intl=(omm.OBJECT_ID||'').replace(/^[0-9]{4}-/,m=>m).padEnd(8).substring(0,8);
-  const ed=new Date(omm.EPOCH),yr=ed.getUTCFullYear(),ys=yr%100;
+  // Fix: strip century and dash from OBJECT_ID (1998-067A → 98067A)
+  const rawIntl=(omm.OBJECT_ID||'00000A').replace('-','');
+  const intl=(rawIntl.length>2?rawIntl.substring(2):rawIntl).padEnd(8).substring(0,8);
+  // Fix: ensure epoch is parsed as UTC
+  const epochStr=omm.EPOCH||'';
+  const ed=new Date(epochStr.endsWith('Z')?epochStr:epochStr+'Z');
+  const yr=ed.getUTCFullYear(),ys=yr%100;
   const j1=new Date(Date.UTC(yr,0,1)),doy=(ed-j1)/86400000+1;
   const mmd=omm.MEAN_MOTION_DOT||0,mmdd=omm.MEAN_MOTION_DDOT||0,bs=omm.BSTAR||0;
   const et=omm.EPHEMERIS_TYPE||0,esn=omm.ELEMENT_SET_NO||999;
   function fE(v){if(v===0)return' 00000-0';const s=v<0?'-':' ',a=Math.abs(v),e=Math.floor(Math.log10(a)),m=a/Math.pow(10,e);return`${s}${(m*100000).toFixed(0).padStart(5,'0').substring(0,5)}${e>=0?'+':'-'}${Math.abs(e)}`;}
   function fM(v){if(v===0)return' .00000000';return(v<0?'-':' ')+Math.abs(v).toFixed(8).replace(/^0\./,'.');}
-  let l1=['1 ',nid,cls,' ',intl.padEnd(8),' ',String(ys).padStart(2,'0'),doy.toFixed(8).padStart(12,'0'),' ',fM(mmd),' ',fE(mmdd),' ',fE(bs),' ',String(et),' ',String(esn).padStart(4)].join('').padEnd(68).substring(0,68);
+  let l1=['1 ',nid,cls,' ',intl,' ',String(ys).padStart(2,'0'),doy.toFixed(8).padStart(12,'0'),' ',fM(mmd),' ',fE(mmdd),' ',fE(bs),' ',String(et),' ',String(esn).padStart(4)].join('').padEnd(68).substring(0,68);
   l1+=cksum(l1);
   const ecc=(omm.ECCENTRICITY||0).toFixed(7).replace('0.','');
   let l2=['2 ',nid,' ',(omm.INCLINATION||0).toFixed(4).padStart(8),' ',(omm.RA_OF_ASC_NODE||0).toFixed(4).padStart(8),' ',ecc.padStart(7,'0'),' ',(omm.ARG_OF_PERICENTER||0).toFixed(4).padStart(8),' ',(omm.MEAN_ANOMALY||0).toFixed(4).padStart(8),' ',(omm.MEAN_MOTION||0).toFixed(8).padStart(11),String(omm.REV_AT_EPOCH||0).padStart(5)].join('').padEnd(68).substring(0,68);
@@ -424,28 +408,41 @@ function initScene(){
   const earthTex=new THREE.TextureLoader().load('earth-texture-small.jpg');
   earth=new THREE.Mesh(earthGeo,new THREE.MeshPhongMaterial({map:earthTex,specular:0x111122,shininess:15}));
   scene.add(earth);
-
   atmosphere=new THREE.Mesh(new THREE.SphereGeometry(1.025,64,64),new THREE.MeshBasicMaterial({color:0x4488ff,transparent:true,opacity:0.07,side:THREE.BackSide}));
   scene.add(atmosphere);
-
   scene.add(new THREE.AmbientLight(0x334466,0.6));
   const sun=new THREE.DirectionalLight(0xffffff,1.0);sun.position.set(5,2,5);scene.add(sun);
-
   const sg=new THREE.BufferGeometry(),sp=new Float32Array(4000*3);
   for(let i=0;i<4000;i++){sp[i*3]=(Math.random()-.5)*200;sp[i*3+1]=(Math.random()-.5)*200;sp[i*3+2]=(Math.random()-.5)*200;}
   sg.setAttribute('position',new THREE.BufferAttribute(sp,3));
   scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:0.12,transparent:true,opacity:0.5})));
 }
 
-// ============================================================
+// #5: check response.ok
 async function loadSatelliteData(){
   const st=document.getElementById('load-status');
   st.textContent='メタデータ読み込み中...';
-  try{const r=await fetch('data/metadata.json');satMetadata=await r.json();}catch(e){console.warn(e);}
+  try{
+    const r=await fetch('data/metadata.json');
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    satMetadata=await r.json();
+  }catch(e){console.warn('metadata:',e);}
 
   st.textContent='OMM読み込み中...';
   let raw=[];
-  for(const src of DATA_FILES){try{const r=await fetch(src.file);const d=await r.json();raw=raw.concat(d);st.textContent=`${d.length}件`;}catch(e){st.textContent='読み込み失敗';}}
+  for(const src of DATA_FILES){
+    try{
+      const r=await fetch(src.file);
+      if(!r.ok)throw new Error(`HTTP ${r.status}`);
+      const d=await r.json();raw=raw.concat(d);
+      st.textContent=`${d.length}件`;
+      // #21: extract epoch range for freshness indicator
+      for(const omm of d){
+        const e=omm.EPOCH||'';
+        if(e&&(!dataEpochStr||e>dataEpochStr))dataEpochStr=e;
+      }
+    }catch(e){st.textContent=`読み込み失敗: ${e.message}`;}
+  }
 
   st.textContent=`${raw.length}件を変換中...`;
   let ok=0,ng=0;
@@ -465,9 +462,12 @@ async function loadSatelliteData(){
   }
   st.textContent=`${ok} 衛星`;
   document.getElementById('total-count').textContent=ok.toLocaleString();
+  // #21: show data epoch
+  if(dataEpochStr){
+    document.getElementById('data-epoch').textContent=`TLEデータ: ${dataEpochStr.substring(0,10)}`;
+  }
 }
 
-// ============================================================
 function updateSatellitePositions(){
   const now=new Date(),gmst=satellite.gstime(now);
   for(const sat of allSatellites){
@@ -495,8 +495,10 @@ function createGlowTexture(){
   const t=new THREE.CanvasTexture(c);t.needsUpdate=true;return t;
 }
 
-// ============================================================
-let heoSprites=[];
+// Shared glow texture (created once)
+let sharedGlowTex=null;
+function getGlowTex(){if(!sharedGlowTex)sharedGlowTex=createGlowTexture();return sharedGlowTex;}
+
 const satVS=`
   attribute float phase; attribute float visible;
   varying vec3 vColor; varying float vAlpha;
@@ -528,47 +530,43 @@ function createSatelliteCloud(){
   geo.setAttribute('phase',new THREE.BufferAttribute(ph,1));
   geo.setAttribute('visible',new THREE.BufferAttribute(vi,1));
   const mat=new THREE.ShaderMaterial({
-    uniforms:{uTime:{value:0},uGlowMap:{value:createGlowTexture()}},
+    uniforms:{uTime:{value:0},uGlowMap:{value:getGlowTex()}},
     vertexShader:satVS,fragmentShader:satFS,vertexColors:true,
     transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
   });
   satPointCloud=new THREE.Points(geo,mat);scene.add(satPointCloud);
-  for(let i=0;i<n;i++)allSatellites[i]._spriteIndex=-1;
 }
 
-function getOrCreateSprite(sat,tex){
+function getOrCreateSprite(sat){
   if(sat._sprite)return sat._sprite;
-  const m=new THREE.SpriteMaterial({map:tex,color:getColorForAltitude(sat.altitude).getHex(),transparent:true,opacity:0.9,blending:THREE.AdditiveBlending,depthWrite:false});
-  const s=new THREE.Sprite(m);scene.add(s);sat._sprite=s;heoSprites.push(s);return s;
+  const m=new THREE.SpriteMaterial({map:getGlowTex(),color:0xffffff,transparent:true,opacity:0.9,blending:THREE.AdditiveBlending,depthWrite:false});
+  const s=new THREE.Sprite(m);scene.add(s);sat._sprite=s;return s;
 }
 
-const glowTexRef={current:null};
-const HIGHLIGHT_COLOR=new THREE.Color(0xff4444); // bright red-orange for highlighted satellites
-const DIM_ALPHA=0.08; // very dim for non-highlighted when a filter is active
-const SELECTED_COLOR=new THREE.Color(0xff2222); // selected satellite from search
+const HIGHLIGHT_COLOR=new THREE.Color(0xff4444);
+const DIM_ALPHA=0.08;
+const SELECTED_COLOR=new THREE.Color(0xff2222);
 
-function hasActiveHighlight(){
-  return activeCountryFilter||activePurposeFilter||activeDetailFilter||cmdFilterFn;
-  // Note: selectedSat alone does NOT trigger dimming — only filters do
-}
+function hasActiveHighlight(){return activeCountryFilter||activePurposeFilter||activeDetailFilter||cmdFilterFn;}
 
 function isHighlighted(sat){
   if(selectedSat&&sat===selectedSat)return 'selected';
-  // Command palette live filter takes priority
   if(cmdFilterFn){return cmdFilterFn(sat)?'highlighted':false;}
-  const matchCountry=!activeCountryFilter||sat.owner===activeCountryFilter;
-  const matchPurpose=!activePurposeFilter||sat.purpose===activePurposeFilter;
-  const matchDetail=!activeDetailFilter||activeDetailFilter.includes(sat.detail);
-  if(activeCountryFilter&&!matchCountry)return false;
-  if(activePurposeFilter&&!matchPurpose)return false;
-  if(activeDetailFilter&&!matchDetail)return false;
+  const mc=!activeCountryFilter||sat.owner===activeCountryFilter;
+  const mp=!activePurposeFilter||sat.purpose===activePurposeFilter;
+  const md=!activeDetailFilter||activeDetailFilter.includes(sat.detail);
+  if(activeCountryFilter&&!mc)return false;
+  if(activePurposeFilter&&!mp)return false;
+  if(activeDetailFilter&&!md)return false;
   if(activeCountryFilter||activePurposeFilter||activeDetailFilter)return 'highlighted';
   return 'normal';
 }
 
+// Temp color to avoid allocations in syncPointCloud
+const _tmpColor=new THREE.Color();
+
 function syncPointCloud(){
   if(!satPointCloud)return;
-  if(!glowTexRef.current)glowTexRef.current=createGlowTexture();
   const altMin=parseFloat(document.getElementById('alt-min').value);
   const altMax=parseFloat(document.getElementById('alt-max').value);
   const pos=satPointCloud.geometry.attributes.position.array;
@@ -579,47 +577,35 @@ function syncPointCloud(){
 
   for(let i=0;i<allSatellites.length;i++){
     const sat=allSatellites[i];
-    // Basic visibility: altitude range + orbit category
-    const inRange=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&
-      ORBIT_CATEGORIES[sat.orbitType]?.active;
-
+    const inRange=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&ORBIT_CATEGORIES[sat.orbitType]?.active;
     if(!inRange){
       pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
       col[i*3]=0;col[i*3+1]=0;col[i*3+2]=0;
       if(sat._sprite)sat._sprite.visible=false;
       continue;
     }
-
     cnt++;
-    // Always check selectedSat; only dim others when filters are active
     const hlState=(selectedSat&&sat===selectedSat)?'selected':(highlighting?isHighlighted(sat):'normal');
 
-    // Determine color and brightness
+    // #6: use pre-allocated colors
     let c,alpha;
-    if(hlState==='selected'){
-      c=SELECTED_COLOR;alpha=1.0;hlCnt++;
-    }else if(hlState==='highlighted'){
-      c=HIGHLIGHT_COLOR;alpha=1.0;hlCnt++;
-    }else if(hlState==='normal'&&!highlighting){
-      c=getColorForAltitude(sat.altitude);alpha=1.0;
-    }else{
-      // Dimmed — still visible but very faint
-      c=getColorForAltitude(sat.altitude);alpha=DIM_ALPHA;
-    }
+    if(hlState==='selected'){c=SELECTED_COLOR;alpha=1.0;hlCnt++;}
+    else if(hlState==='highlighted'){c=HIGHLIGHT_COLOR;alpha=1.0;hlCnt++;}
+    else if(hlState==='normal'&&!highlighting){c=getColorForAltitude(sat.altitude);alpha=1.0;}
+    else{c=getColorForAltitude(sat.altitude);alpha=DIM_ALPHA;}
 
-    // Selected satellite ALWAYS gets a sprite (even LEO) so it stands out
     if(hlState==='selected'){
       pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
-      const sp=getOrCreateSprite(sat,glowTexRef.current);
+      const sp=getOrCreateSprite(sat);
       sp.visible=true;sp.position.copy(sat.position);
       sp.scale.setScalar(Math.max(sat.position.length()*0.15,0.2));
-      sp.material.color.set(SELECTED_COLOR);sp.material.opacity=1.0;
+      sp.material.color.copy(SELECTED_COLOR);sp.material.opacity=1.0;
     }else if(sat.altitude>2000){
       pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
-      const sp=getOrCreateSprite(sat,glowTexRef.current);
+      const sp=getOrCreateSprite(sat);
       sp.visible=true;sp.position.copy(sat.position);
       sp.scale.setScalar(sat.position.length()*(hlState==='highlighted'?0.09:0.06));
-      sp.material.color.set(c);sp.material.opacity=alpha;
+      sp.material.color.copy(c);sp.material.opacity=alpha;
     }else{
       pos[i*3]=sat.position.x;pos[i*3+1]=sat.position.y;pos[i*3+2]=sat.position.z;
       col[i*3]=c.r*alpha;col[i*3+1]=c.g*alpha;col[i*3+2]=c.b*alpha;
@@ -632,100 +618,82 @@ function syncPointCloud(){
   satPointCloud.geometry.attributes.visible.needsUpdate=true;
   const label=highlighting?`${hlCnt.toLocaleString()} 強調 / ${cnt.toLocaleString()} 表示`:cnt.toLocaleString();
   document.getElementById('visible-count').innerHTML=label;
+  // #16: show/hide reset button
+  const resetBtn=document.getElementById('reset-all');
+  if(resetBtn)resetBtn.style.display=(activeCountryFilter||activePurposeFilter||activeDetailFilter)?'inline-block':'none';
 }
 
 // ============================================================
 function initUI(){
   document.getElementById('ui').style.display='';
 
-  // Country filter buttons with counts
-  const countryCounts={};
-  for(const sat of allSatellites){const o=sat.owner;if(o)countryCounts[o]=(countryCounts[o]||0)+1;}
-
-  const cc=document.getElementById('country-filters');
-  // "ALL" button
-  const allBtn=document.createElement('button');
-  allBtn.className='tag active';allBtn.innerHTML=`すべて <span class="count">${allSatellites.length.toLocaleString()}</span>`;
-  allBtn.addEventListener('click',()=>{
-    activeCountryFilter=null;
-    cc.querySelectorAll('.tag').forEach(b=>{b.classList.remove('active','country-active');});
-    allBtn.classList.add('active');
+  // #16: reset all filters
+  document.getElementById('reset-all').addEventListener('click',()=>{
+    activeCountryFilter=null;activePurposeFilter=null;activeDetailFilter=null;
+    document.querySelectorAll('.tag').forEach(b=>{b.classList.remove('active','filter-active');});
+    document.querySelectorAll('.tag').forEach(b=>{if(b.textContent.startsWith('すべて'))b.classList.add('active');});
+    // Reset orbit categories
+    for(const cat of Object.values(ORBIT_CATEGORIES))cat.active=true;
+    document.querySelectorAll('#orbit-filters .tag').forEach(b=>b.classList.add('active'));
     syncPointCloud();
   });
-  cc.appendChild(allBtn);
 
+  const countryCounts={};
+  for(const sat of allSatellites){const o=sat.owner;if(o)countryCounts[o]=(countryCounts[o]||0)+1;}
+  const cc=document.getElementById('country-filters');
+  const allBtn=document.createElement('button');
+  allBtn.className='tag active';allBtn.innerHTML=`すべて <span class="count">${allSatellites.length.toLocaleString()}</span>`;
+  allBtn.addEventListener('click',()=>{activeCountryFilter=null;cc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allBtn.classList.add('active');syncPointCloud();});
+  cc.appendChild(allBtn);
   for(const cf of COUNTRY_FILTERS){
-    const count=countryCounts[cf.code]||0;
-    if(count===0)continue;
-    const btn=document.createElement('button');
-    btn.className='tag';
+    const count=countryCounts[cf.code]||0;if(count===0)continue;
+    const btn=document.createElement('button');btn.className='tag';
     btn.innerHTML=`${cf.label} <span class="count">${count}</span>`;
     btn.addEventListener('click',()=>{
-      if(activeCountryFilter===cf.code){
-        activeCountryFilter=null;
-        cc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
-        allBtn.classList.add('active');
-      }else{
-        activeCountryFilter=cf.code;
-        cc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
-        btn.classList.add('country-active');
-      }
+      if(activeCountryFilter===cf.code){activeCountryFilter=null;cc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allBtn.classList.add('active');}
+      else{activeCountryFilter=cf.code;cc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));btn.classList.add('filter-active');}
       syncPointCloud();
     });
     cc.appendChild(btn);
   }
 
-  // Purpose filter buttons
   const purposeCounts={};
   for(const sat of allSatellites){const p=sat.purpose;if(p)purposeCounts[p]=(purposeCounts[p]||0)+1;}
   const pc=document.getElementById('purpose-filters');
-  const allPBtn=document.createElement('button');
-  allPBtn.className='tag active';allPBtn.innerHTML=`すべて`;
-  allPBtn.addEventListener('click',()=>{
-    activePurposeFilter=null;
-    pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
-    allPBtn.classList.add('active');syncPointCloud();
-  });
+  const allPBtn=document.createElement('button');allPBtn.className='tag active';allPBtn.innerHTML='すべて';
+  allPBtn.addEventListener('click',()=>{activePurposeFilter=null;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allPBtn.classList.add('active');syncPointCloud();});
   pc.appendChild(allPBtn);
   for(const pf of PURPOSE_FILTERS){
-    const count=purposeCounts[pf.key]||0;
-    if(count===0)continue;
+    const count=purposeCounts[pf.key]||0;if(count===0)continue;
     const btn=document.createElement('button');btn.className='tag';
     btn.innerHTML=`${pf.label} <span class="count">${count}</span>`;
     btn.addEventListener('click',()=>{
-      if(activePurposeFilter===pf.key){activePurposeFilter=null;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));allPBtn.classList.add('active');}
-      else{activePurposeFilter=pf.key;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));btn.classList.add('country-active');}
+      if(activePurposeFilter===pf.key){activePurposeFilter=null;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allPBtn.classList.add('active');}
+      else{activePurposeFilter=pf.key;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));btn.classList.add('filter-active');}
       syncPointCloud();
     });
     pc.appendChild(btn);
   }
 
-  // Detail / sensor type filter buttons
   const detailCounts={};
   for(const df of DETAIL_FILTERS){let c=0;for(const sat of allSatellites){if(df.match.includes(sat.detail))c++;}detailCounts[df.key]=c;}
   const dc=document.getElementById('detail-filters');
-  const allDBtn=document.createElement('button');
-  allDBtn.className='tag active';allDBtn.innerHTML='すべて';
-  allDBtn.addEventListener('click',()=>{
-    activeDetailFilter=null;
-    dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
-    allDBtn.classList.add('active');syncPointCloud();
-  });
+  const allDBtn=document.createElement('button');allDBtn.className='tag active';allDBtn.innerHTML='すべて';
+  allDBtn.addEventListener('click',()=>{activeDetailFilter=null;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allDBtn.classList.add('active');syncPointCloud();});
   dc.appendChild(allDBtn);
   for(const df of DETAIL_FILTERS){
-    const count=detailCounts[df.key]||0;
-    if(count===0)continue;
+    const count=detailCounts[df.key]||0;if(count===0)continue;
     const btn=document.createElement('button');btn.className='tag';
     btn.innerHTML=`${df.label} <span class="count">${count}</span>`;
     btn.addEventListener('click',()=>{
-      if(activeDetailFilter&&activeDetailFilter===df.match){activeDetailFilter=null;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));allDBtn.classList.add('active');}
-      else{activeDetailFilter=df.match;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));btn.classList.add('country-active');}
+      // #2.3: compare by key not reference
+      if(activeDetailFilter&&activeDetailFilter._key===df.key){activeDetailFilter=null;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));allDBtn.classList.add('active');}
+      else{activeDetailFilter=df.match;activeDetailFilter._key=df.key;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','filter-active'));btn.classList.add('filter-active');}
       syncPointCloud();
     });
     dc.appendChild(btn);
   }
 
-  // Orbit category buttons
   const oc=document.getElementById('orbit-filters');
   for(const [key,cat] of Object.entries(ORBIT_CATEGORIES)){
     const btn=document.createElement('button');btn.className='tag active';btn.textContent=cat.label;
@@ -733,61 +701,43 @@ function initUI(){
     oc.appendChild(btn);
   }
 
-  // Range sliders
-  document.getElementById('alt-min').addEventListener('input',e=>{
-    document.getElementById('alt-min-val').textContent=Number(e.target.value).toLocaleString();syncPointCloud();});
-  document.getElementById('alt-max').addEventListener('input',e=>{
-    document.getElementById('alt-max-val').textContent=Number(e.target.value).toLocaleString();syncPointCloud();});
+  document.getElementById('alt-min').addEventListener('input',e=>{document.getElementById('alt-min-val').textContent=Number(e.target.value).toLocaleString();syncPointCloud();});
+  document.getElementById('alt-max').addEventListener('input',e=>{document.getElementById('alt-max-val').textContent=Number(e.target.value).toLocaleString();syncPointCloud();});
 
-  // Mobile toggle
   const toggle=document.getElementById('ui-toggle');
   const ui=document.getElementById('ui');
   toggle.addEventListener('click',()=>{ui.classList.toggle('open');toggle.classList.toggle('open');});
+
+  // #9: search tab button opens command palette directly (no tab conflict)
+  document.getElementById('search-tab-btn').addEventListener('click',()=>openCommandPalette());
+
+  // Detail panel close
+  document.getElementById('dp-close').addEventListener('click',()=>{
+    document.getElementById('detail-panel').style.display='none';
+    selectedSat=null;clearOrbitTrack();syncPointCloud();
+  });
 }
 
-// ============================================================
-// CLICK TO SELECT — on globe, click a satellite to show orbit + detail
 // ============================================================
 function clickSelectSatellite(){
   if(!satPointCloud)return;
   raycaster.setFromCamera(mouse,camera);
-
-  // Check point cloud (LEO)
   const hits=raycaster.intersectObject(satPointCloud);
-  for(const h of hits){
-    const sat=allSatellites[h.index];
-    if(sat&&sat.altitude>0&&h.point.z>-900){
-      selectSatOnGlobe(sat);return;
-    }
+  for(const h of hits){const sat=allSatellites[h.index];if(sat&&sat.altitude>0&&h.point.z>-900){selectSatOnGlobe(sat);return;}}
+  // Cached visible sprites for raycasting
+  const visSprites=[];
+  for(const sat of allSatellites){if(sat._sprite&&sat._sprite.visible)visSprites.push(sat);}
+  if(visSprites.length>0){
+    const sh=raycaster.intersectObjects(visSprites.map(s=>s._sprite));
+    if(sh.length>0){const sat=visSprites.find(s=>s._sprite===sh[0].object);if(sat&&sat.altitude>0){selectSatOnGlobe(sat);return;}}
   }
-  // Check sprites (MEO/GEO/HEO)
-  const st=allSatellites.filter(s=>s._sprite&&s._sprite.visible);
-  if(st.length>0){
-    const sh=raycaster.intersectObjects(st.map(s=>s._sprite));
-    if(sh.length>0){
-      const sat=st.find(s=>s._sprite===sh[0].object);
-      if(sat&&sat.altitude>0){selectSatOnGlobe(sat);return;}
-    }
-  }
-  // Clicked empty space — deselect
-  if(selectedSat){
-    selectedSat=null;clearOrbitTrack();
-    document.getElementById('detail-panel').style.display='none';
-    syncPointCloud();
-  }
+  if(selectedSat){selectedSat=null;clearOrbitTrack();document.getElementById('detail-panel').style.display='none';syncPointCloud();}
 }
-
-function selectSatOnGlobe(sat){
-  selectedSat=sat;
-  showOrbitTrack(sat);
-  showDetailPanel(sat);
-  syncPointCloud();
-}
+function selectSatOnGlobe(sat){selectedSat=sat;showOrbitTrack(sat);showDetailPanel(sat);syncPointCloud();}
 
 // ============================================================
 function initControls(){
   const el=renderer.domElement;
-  // Mouse
   el.addEventListener('mousedown',e=>{isDragging=true;dragMoved=false;prevMouse.x=e.clientX;prevMouse.y=e.clientY;});
   el.addEventListener('mousemove',e=>{
     mouse.x=(e.clientX/window.innerWidth)*2-1;mouse.y=-(e.clientY/window.innerHeight)*2+1;
@@ -796,14 +746,11 @@ function initControls(){
       spherical.theta-=dx*0.005;spherical.phi=Math.max(0.1,Math.min(PI-0.1,spherical.phi-dy*0.005));
       prevMouse.x=e.clientX;prevMouse.y=e.clientY;}
   });
-  el.addEventListener('mouseup',()=>{
-    if(!dragMoved){clickSelectSatellite();}
-    isDragging=false;
-  });
+  el.addEventListener('mouseup',()=>{if(!dragMoved)clickSelectSatellite();isDragging=false;});
   el.addEventListener('mouseleave',()=>{isDragging=false;});
-  el.addEventListener('wheel',e=>{spherical.radius=Math.max(1.3,Math.min(50,spherical.radius+e.deltaY*0.005));});
+  el.addEventListener('wheel',e=>{spherical.radius=Math.max(1.3,Math.min(50,spherical.radius+e.deltaY*0.005));},{passive:true});
 
-  // Touch — drag to rotate, pinch to zoom
+  // #1: touch — fixed dragMoved flag
   el.addEventListener('touchstart',e=>{
     if(e.touches.length===1){isDragging=true;dragMoved=false;prevMouse.x=e.touches[0].clientX;prevMouse.y=e.touches[0].clientY;}
     if(e.touches.length===2){const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;touchDist=Math.sqrt(dx*dx+dy*dy);}
@@ -811,15 +758,15 @@ function initControls(){
   el.addEventListener('touchmove',e=>{
     if(e.touches.length===1&&isDragging){
       const dx=e.touches[0].clientX-prevMouse.x,dy=e.touches[0].clientY-prevMouse.y;
+      if(Math.abs(dx)>3||Math.abs(dy)>3)dragMoved=true; // #1: SET dragMoved on touch
       spherical.theta-=dx*0.005;spherical.phi=Math.max(0.1,Math.min(PI-0.1,spherical.phi-dy*0.005));
       prevMouse.x=e.touches[0].clientX;prevMouse.y=e.touches[0].clientY;
     }
-    if(e.touches.length===2){const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
+    if(e.touches.length===2){dragMoved=true;const dx=e.touches[0].clientX-e.touches[1].clientX,dy=e.touches[0].clientY-e.touches[1].clientY;
       const d=Math.sqrt(dx*dx+dy*dy);if(touchDist>0){spherical.radius=Math.max(1.3,Math.min(50,spherical.radius*(touchDist/d)));}touchDist=d;}
   },{passive:true});
   el.addEventListener('touchend',e=>{
     if(!dragMoved&&e.changedTouches.length===1){
-      // Set mouse coords from touch for raycasting
       mouse.x=(e.changedTouches[0].clientX/window.innerWidth)*2-1;
       mouse.y=-(e.changedTouches[0].clientY/window.innerHeight)*2+1;
       clickSelectSatellite();
@@ -840,7 +787,8 @@ function showTooltipForSat(sat){
   document.getElementById('tt-name').style.color=sat.isJapanese?'#ff6666':'#7affc1';
   document.getElementById('tt-owner').textContent=`運用: ${OWNER_NAMES[sat.owner]||sat.owner||'不明'}`;
   document.getElementById('tt-type').textContent=`種別: ${OBJ_TYPE_NAMES[sat.objType]||sat.objType||'不明'}`;
-  const purposeStr=sat.purpose?(OWNER_NAMES[sat.purpose]||sat.purpose):'';
+  // #3.5: fix purpose display (was using OWNER_NAMES by mistake)
+  const purposeStr=sat.purpose||'';
   const detailStr=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):'';
   document.getElementById('tt-purpose').textContent=purposeStr||detailStr?`目的: ${purposeStr}${detailStr?' / '+detailStr:''}`:'';
   let ls='';if(sat.launchDate){ls=`打上: ${sat.launchDate}`;const sn=LAUNCH_SITE_NAMES[sat.launchSite]||sat.launchSite;if(sn)ls+=` (${sn})`;}
@@ -848,112 +796,98 @@ function showTooltipForSat(sat){
   document.getElementById('tt-norad').textContent=`NORAD: ${sat.noradId}`;
   document.getElementById('tt-alt').textContent=`高度: ${sat.altitude.toFixed(1)} km`;
   document.getElementById('tt-vel').textContent=`速度: ${sat.velocity.toFixed(2)} km/s`;
-  document.getElementById('tt-lat').textContent=`直下点: ${sat.lat.toFixed(2)}°N, ${sat.lon.toFixed(2)}°E`;
-  document.getElementById('tt-period').textContent=`周期: ${(2*PI*Math.sqrt(Math.pow(EARTH_RADIUS_KM+sat.altitude,3)/398600.4418)/60).toFixed(1)} 分`;
+  // #10: proper N/S E/W
+  document.getElementById('tt-lat').textContent=`直下点: ${fmtLat(sat.lat)}, ${fmtLon(sat.lon)}`;
+  // #11: period from mean motion
+  document.getElementById('tt-period').textContent=`周期: ${getPeriodMin(sat).toFixed(1)} 分`;
 }
+// #7: only raycast when mouse has moved
 function updateTooltip(){
   if(isDragging||!satPointCloud)return;
+  if(mouse.x===lastMouseX&&mouse.y===lastMouseY)return;
+  lastMouseX=mouse.x;lastMouseY=mouse.y;
   raycaster.setFromCamera(mouse,camera);
   const tt=document.getElementById('tooltip');
   const hits=raycaster.intersectObject(satPointCloud);
   for(const h of hits){const s=allSatellites[h.index];if(s&&s.altitude>0&&h.point.z>-900){showTooltipForSat(s);return;}}
-  const st=allSatellites.filter(s=>s._sprite&&s._sprite.visible);
-  if(st.length>0){const sh=raycaster.intersectObjects(st.map(s=>s._sprite));
-    if(sh.length>0){const s=st.find(s=>s._sprite===sh[0].object);if(s&&s.altitude>0){showTooltipForSat(s);return;}}}
+  // Use cached visible sprites
+  const visSprites=[];
+  for(const sat of allSatellites){if(sat._sprite&&sat._sprite.visible)visSprites.push(sat);}
+  if(visSprites.length>0){const sh=raycaster.intersectObjects(visSprites.map(s=>s._sprite));
+    if(sh.length>0){const s=visSprites.find(s=>s._sprite===sh[0].object);if(s&&s.altitude>0){showTooltipForSat(s);return;}}}
   tt.style.display='none';
 }
 
 // ============================================================
-// FLY TO SATELLITE — smooth camera animation
-// ============================================================
 function flyToSatellite(sat){
   if(sat.altitude<=0)return;
   selectedSat=sat;
-  // Compute target spherical coords to look at the satellite
-  const p=sat.position;
-  const targetTheta=Math.atan2(p.z,p.x);
+  const p=sat.position,targetTheta=Math.atan2(p.z,p.x);
   const targetPhi=Math.acos(Math.max(-1,Math.min(1,p.y/p.length())));
-  const r=p.length();
-  const targetRadius=Math.max(r*1.8,2.5); // pull back to see it
-
+  const r=p.length(),targetRadius=Math.max(r*1.8,2.5);
   flyStart={theta:spherical.theta,phi:spherical.phi,radius:spherical.radius};
   flyTarget={theta:targetTheta,phi:targetPhi,radius:targetRadius,startTime:performance.now(),duration:1200};
-
-  showDetailPanel(sat);
-  showOrbitTrack(sat);
+  showDetailPanel(sat);showOrbitTrack(sat);
 }
-
 function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
-
 function updateFly(time){
   if(!flyTarget)return;
-  const elapsed=time-flyTarget.startTime;
-  const progress=Math.min(elapsed/flyTarget.duration,1);
-  const t=easeInOut(progress);
-
-  // Interpolate spherical coordinates
-  // Handle theta wrapping
+  const elapsed=time-flyTarget.startTime,progress=Math.min(elapsed/flyTarget.duration,1),t=easeInOut(progress);
   let dTheta=flyTarget.theta-flyStart.theta;
-  if(dTheta>PI)dTheta-=2*PI;
-  if(dTheta<-PI)dTheta+=2*PI;
-
+  if(dTheta>PI)dTheta-=2*PI;if(dTheta<-PI)dTheta+=2*PI;
   spherical.theta=flyStart.theta+dTheta*t;
   spherical.phi=flyStart.phi+(flyTarget.phi-flyStart.phi)*t;
   spherical.radius=flyStart.radius+(flyTarget.radius-flyStart.radius)*t;
-
   if(progress>=1)flyTarget=null;
 }
 
 // ============================================================
-// DETAIL PANEL
-// ============================================================
+// #8: detail panel — only update live values, not full innerHTML rebuild
 function showDetailPanel(sat){
   const dp=document.getElementById('detail-panel');
   dp.style.display='block';
   const nameEl=document.getElementById('dp-name');
   nameEl.textContent=sat.name;
   nameEl.className='dp-name'+(sat.isJapanese?' jpn':'');
-
   const info=document.getElementById('dp-info');
   const ownerName=OWNER_NAMES[sat.owner]||sat.owner||'—';
   const purposeStr=sat.purpose||'—';
   const detailStr=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):'—';
   const launchStr=sat.launchDate||'—';
   const siteStr=sat.launchSite?(LAUNCH_SITE_NAMES[sat.launchSite]||sat.launchSite):'';
-  const period=(2*PI*Math.sqrt(Math.pow(EARTH_RADIUS_KM+sat.altitude,3)/398600.4418)/60).toFixed(1);
-
   info.innerHTML=`
     <span class="dp-row">運用: <span class="dp-val">${ownerName}</span></span>
     <span class="dp-row">目的: <span class="dp-val">${purposeStr}</span></span>
     <span class="dp-row">詳細: <span class="dp-val">${detailStr}</span></span>
     <span class="dp-row">打上: <span class="dp-val">${launchStr}${siteStr?' ('+siteStr+')':''}</span></span>
     <span class="dp-row">NORAD: <span class="dp-val">${sat.noradId}</span></span>
-    <br>
+    ${sat._orbitInfo?`<br><span class="dp-row" style="color:#7affc1">軌道: <span class="dp-val">${sat._orbitInfo.revolutions}周 / ${sat._orbitInfo.totalHours}時間（周期 ${sat._orbitInfo.periodMin.toFixed(1)}分）</span></span>`:''}`;
+}
+// Live update only dynamic values
+function updateDetailPanelLive(sat){
+  const live=document.getElementById('dp-live');
+  if(!live)return;
+  live.innerHTML=`
     <span class="dp-row">高度: <span class="dp-val">${sat.altitude.toFixed(1)} km</span></span>
     <span class="dp-row">速度: <span class="dp-val">${sat.velocity.toFixed(2)} km/s</span></span>
-    <span class="dp-row">周期: <span class="dp-val">${period} 分</span></span>
-    <span class="dp-row">直下点: <span class="dp-val">${sat.lat.toFixed(2)}°N, ${sat.lon.toFixed(2)}°E</span></span>
-    ${sat._orbitInfo?`<br><span class="dp-row" style="color:#7affc1">軌道表示: <span class="dp-val">${sat._orbitInfo.revolutions}周 / ${sat._orbitInfo.totalHours}時間分（周期 ${sat._orbitInfo.periodMin.toFixed(1)}分）</span></span>`:''}
-  `;
+    <span class="dp-row">周期: <span class="dp-val">${getPeriodMin(sat).toFixed(1)} 分</span></span>
+    <span class="dp-row">直下点: <span class="dp-val">${fmtLat(sat.lat)}, ${fmtLon(sat.lon)}</span></span>`;
 }
 
 // ============================================================
-// ORBIT TRACK — draw orbital path when satellite selected
-// ============================================================
-const ORBIT_REVOLUTIONS=10; // 10周分の軌道を表示
-
+// #18: GEO=2rev, others=10rev. #19: ground track
 function showOrbitTrack(sat){
   clearOrbitTrack();
   if(!sat||sat.altitude<=0)return;
-
   const now=new Date();
-  const meanMotion=sat.satrec.no*1440/(2*PI); // rev/day
-  const periodMin=meanMotion>0?1440/meanMotion:90;
+  const periodMin=getPeriodMin(sat);
   const periodMs=periodMin*60*1000;
-  const totalMs=periodMs*ORBIT_REVOLUTIONS;
+  // #18: fewer revolutions for GEO/HEO (otherwise 10 days of overlapping lines)
+  const revs=sat.orbitType==='geo'||sat.orbitType==='heo'?2:10;
+  const totalMs=periodMs*revs;
   const totalHours=(totalMs/3600000).toFixed(1);
-  const steps=ORBIT_REVOLUTIONS*120; // 120 points per revolution
-  const points=[];
+  const steps=revs*120;
+  const orbitPts=[],groundPts=[];
 
   for(let i=0;i<=steps;i++){
     const t=new Date(now.getTime()+(i/steps)*totalMs);
@@ -962,107 +896,85 @@ function showOrbitTrack(sat){
       const pv=satellite.propagate(sat.satrec,t);
       if(!pv.position)continue;
       const geo=satellite.eciToGeodetic(pv.position,gmst);
-      const lat=satellite.degreesLat(geo.latitude);
-      const lon=satellite.degreesLong(geo.longitude);
-      const alt=geo.height;
-      const r=altToRadius(alt);
-      const phi=(90-lat)*DEG2RAD;
-      const theta=(lon+180)*DEG2RAD;
-      points.push(new THREE.Vector3(
-        r*Math.sin(phi)*Math.cos(theta),r*Math.cos(phi),r*Math.sin(phi)*Math.sin(theta)
-      ));
+      const lat=satellite.degreesLat(geo.latitude),lon=satellite.degreesLong(geo.longitude),alt=geo.height;
+      const r=altToRadius(alt),phi=(90-lat)*DEG2RAD,theta=(lon+180)*DEG2RAD;
+      const sx=Math.sin(phi)*Math.cos(theta),sy=Math.cos(phi),sz=Math.sin(phi)*Math.sin(theta);
+      orbitPts.push(new THREE.Vector3(r*sx,r*sy,r*sz));
+      // #19: ground track at earth surface
+      groundPts.push(new THREE.Vector3(1.003*sx,1.003*sy,1.003*sz));
     }catch(e){}
   }
+  if(orbitPts.length<10)return;
 
-  if(points.length<10)return;
-
-  // Color gradient: each revolution gets slightly different hue to show same vs different path
-  const geo=new THREE.BufferGeometry().setFromPoints(points);
-  const colors=new Float32Array(points.length*3);
-  for(let i=0;i<points.length;i++){
-    const progress=i/points.length;
-    const rev=Math.floor(progress*ORBIT_REVOLUTIONS);
-    // Cycle through colors per revolution to distinguish tracks
-    const hue=(rev/ORBIT_REVOLUTIONS)*0.3; // 0 to 0.3 (green→cyan→blue shift)
-    const alpha=1.0-progress*0.6; // fade over time
-    const c=new THREE.Color().setHSL(0.45-hue,0.9,0.5+alpha*0.3);
-    colors[i*3]=c.r*alpha; colors[i*3+1]=c.g*alpha; colors[i*3+2]=c.b*alpha;
+  function makeTrackLine(pts,baseHue,opacity){
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const colors=new Float32Array(pts.length*3);
+    for(let i=0;i<pts.length;i++){
+      const progress=i/pts.length;
+      const rev=Math.floor(progress*revs);
+      const hue=baseHue-(rev/revs)*0.3;
+      const alpha=1.0-progress*0.6;
+      const c=new THREE.Color().setHSL(hue,0.9,0.5+alpha*0.3);
+      colors[i*3]=c.r*alpha;colors[i*3+1]=c.g*alpha;colors[i*3+2]=c.b*alpha;
+    }
+    geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
+    return new THREE.Line(geo,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity,depthWrite:false,blending:THREE.AdditiveBlending}));
   }
-  geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
 
-  const mat=new THREE.LineBasicMaterial({
-    vertexColors:true,transparent:true,opacity:0.7,
-    depthWrite:false,blending:THREE.AdditiveBlending,
-  });
-  orbitLine=new THREE.Line(geo,mat);
+  orbitLine=makeTrackLine(orbitPts,0.45,0.7);
   scene.add(orbitLine);
+  groundTrackLine=makeTrackLine(groundPts,0.12,0.4);
+  scene.add(groundTrackLine);
 
-  // Store orbit info for detail panel
-  sat._orbitInfo={revolutions:ORBIT_REVOLUTIONS,periodMin,totalHours};
+  sat._orbitInfo={revolutions:revs,periodMin,totalHours};
 }
 
 function clearOrbitTrack(){
   if(orbitLine){scene.remove(orbitLine);orbitLine.geometry.dispose();orbitLine.material.dispose();orbitLine=null;}
+  if(groundTrackLine){scene.remove(groundTrackLine);groundTrackLine.geometry.dispose();groundTrackLine.material.dispose();groundTrackLine=null;}
 }
 
 // ============================================================
-// COMMAND PALETTE — smart search with token parsing
-// ============================================================
-const CMD_SUGGESTIONS=[
-  'japan sar','japan 地球観測','starlink','leo <500km','geo communications',
-  'launched 2024','himawari','alos','gps','sentinel','iss',
-  'sar','optical','韓国','中国 leo','ロシア geo',
-];
-
-// Token parser: split query into structured filters + freetext
+// #3: Fixed command palette token parser — OR logic for purposes/orbits
 function parseCommandTokens(query){
   const tokens=query.toLowerCase().split(/\s+/).filter(t=>t);
-  const filters={countries:[],purposes:[],details:[],altMax:null,altMin:null,years:[],freetext:[]};
+  const filters={countries:[],purposes:[],orbits:[],details:[],altMax:null,altMin:null,years:[],freetext:[]};
   const chips=[];
-
   for(const tok of tokens){
-    // Country match
     let matched=false;
+    // Country match (require 3+ chars for name matching to avoid false positives)
     for(const [code,name] of Object.entries(OWNER_NAMES)){
-      if(tok===code.toLowerCase()||name.toLowerCase().includes(tok)){
+      if(tok===code.toLowerCase()||(tok.length>=3&&name.toLowerCase().includes(tok))){
         filters.countries.push(code);chips.push({label:`国: ${name}`,type:'country'});matched=true;break;
       }
     }
     if(matched)continue;
-
-    // Altitude filter
     const altLt=tok.match(/^<(\d+)km?$/);
     if(altLt){filters.altMax=parseInt(altLt[1]);chips.push({label:`高度 <${altLt[1]}km`,type:'alt'});continue;}
     const altGt=tok.match(/^>(\d+)km?$/);
     if(altGt){filters.altMin=parseInt(altGt[1]);chips.push({label:`高度 >${altGt[1]}km`,type:'alt'});continue;}
-
-    // Year
+    // Altitude range: 200-500km
+    const altRange=tok.match(/^(\d+)-(\d+)km?$/);
+    if(altRange){filters.altMin=parseInt(altRange[1]);filters.altMax=parseInt(altRange[2]);chips.push({label:`高度 ${altRange[1]}-${altRange[2]}km`,type:'alt'});continue;}
     const yearMatch=tok.match(/^(19|20)\d{2}$/);
     if(yearMatch){filters.years.push(tok);chips.push({label:`打上: ${tok}`,type:'year'});continue;}
-    if(tok==='launched')continue; // skip keyword
-
-    // Orbit type
+    if(tok==='launched')continue;
+    // Orbit type — separate from purposes
     if(['leo','meo','geo','heo'].includes(tok)){
-      filters.purposes.push('_orbit_'+tok);chips.push({label:tok.toUpperCase(),type:'orbit'});continue;
+      filters.orbits.push(tok);chips.push({label:tok.toUpperCase(),type:'orbit'});continue;
     }
-
-    // Purpose
     for(const pf of PURPOSE_FILTERS){
       if(pf.label.toLowerCase().includes(tok)||pf.key.toLowerCase().includes(tok)){
         filters.purposes.push(pf.key);chips.push({label:pf.label,type:'purpose'});matched=true;break;
       }
     }
     if(matched)continue;
-
-    // Detail/sensor match
     for(const df of DETAIL_FILTERS){
       if(df.label.toLowerCase().includes(tok)||df.key.replace('_','').includes(tok)){
         filters.details.push(...df.match);chips.push({label:df.label,type:'detail'});matched=true;break;
       }
     }
     if(matched)continue;
-
-    // Freetext fallback
     filters.freetext.push(tok);
   }
   return {filters,chips};
@@ -1073,17 +985,11 @@ function buildFilterFn(filters){
     if(filters.countries.length&&!filters.countries.includes(sat.owner))return false;
     if(filters.altMax!==null&&sat.altitude>filters.altMax)return false;
     if(filters.altMin!==null&&sat.altitude<filters.altMin)return false;
-    if(filters.years.length){
-      const y=sat.launchDate?sat.launchDate.substring(0,4):'';
-      if(!filters.years.includes(y))return false;
-    }
-    for(const p of filters.purposes){
-      if(p.startsWith('_orbit_')){
-        if(sat.orbitType!==p.replace('_orbit_',''))return false;
-      }else{
-        if(sat.purpose!==p)return false;
-      }
-    }
+    if(filters.years.length){const y=sat.launchDate?sat.launchDate.substring(0,4):'';if(!filters.years.includes(y))return false;}
+    // #3: OR logic for orbits (leo OR meo)
+    if(filters.orbits.length&&!filters.orbits.includes(sat.orbitType))return false;
+    // #3: OR logic for purposes
+    if(filters.purposes.length&&!filters.purposes.some(p=>sat.purpose===p))return false;
     if(filters.details.length&&!filters.details.includes(sat.detail))return false;
     for(const ft of filters.freetext){
       const hay=(sat.name+' '+sat.noradId+' '+sat.purpose+' '+sat.detail+' '+(OWNER_NAMES[sat.owner]||'')).toLowerCase();
@@ -1093,194 +999,120 @@ function buildFilterFn(filters){
   };
 }
 
-function initCommandPalette(){
+// ============================================================
+let cmdOpen=false;
+function openCommandPalette(){
   const overlay=document.getElementById('cmd-overlay');
+  overlay.classList.add('open');cmdOpen=true;
+  const input=document.getElementById('cmd-input');
+  input.value='';
+  document.getElementById('cmd-chips').innerHTML='';
+  document.getElementById('cmd-count').textContent='';
+  cmdFilterFn=null;
+  showPaletteBrowse();
+  requestAnimationFrame(()=>input.focus());
+}
+function closeCommandPalette(){
+  document.getElementById('cmd-overlay').classList.remove('open');cmdOpen=false;
+  cmdFilterFn=null;syncPointCloud();
+}
+
+let cmdResults=[],cmdActiveIdx=-1;
+function showPaletteBrowse(){
+  const resultsEl=document.getElementById('cmd-results');
+  resultsEl.innerHTML='';
+  const countryCounts={},purposeCounts={},detailCounts={},orbitCounts={},yearCounts={};
+  for(const sat of allSatellites){
+    if(sat.altitude<=0)continue;
+    if(sat.owner)countryCounts[sat.owner]=(countryCounts[sat.owner]||0)+1;
+    if(sat.purpose)purposeCounts[sat.purpose]=(purposeCounts[sat.purpose]||0)+1;
+    if(sat.detail)detailCounts[sat.detail]=(detailCounts[sat.detail]||0)+1;
+    orbitCounts[sat.orbitType]=(orbitCounts[sat.orbitType]||0)+1;
+    if(sat.launchDate){const y=sat.launchDate.substring(0,4);yearCounts[y]=(yearCounts[y]||0)+1;}
+  }
+  function makeSection(title,items){
+    const sec=document.createElement('div');
+    sec.style.cssText='padding:8px 14px;border-bottom:1px solid #1a1a1a;';
+    sec.innerHTML=`<div style="font-size:10px;color:#666;margin-bottom:6px;">${title}</div>`;
+    const wrap=document.createElement('div');wrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
+    for(const item of items){
+      const btn=document.createElement('button');btn.className='cmd-suggest-btn';
+      btn.innerHTML=`${item.label} <span style="color:#555;margin-left:2px;">${item.count}</span>`;
+      btn.addEventListener('click',()=>{const inp=document.getElementById('cmd-input');inp.value=item.query;inp.dispatchEvent(new Event('input'));inp.focus();});
+      wrap.appendChild(btn);
+    }
+    sec.appendChild(wrap);return sec;
+  }
+  const countries=COUNTRY_FILTERS.map(cf=>({label:cf.label,count:countryCounts[cf.code]||0,query:cf.label.toLowerCase()})).filter(c=>c.count>0).sort((a,b)=>b.count-a.count);
+  resultsEl.appendChild(makeSection('国・地域',countries));
+  resultsEl.appendChild(makeSection('軌道',[
+    {label:'LEO 低軌道',count:orbitCounts['leo']||0,query:'leo'},
+    {label:'MEO 中軌道',count:orbitCounts['meo']||0,query:'meo'},
+    {label:'GEO 静止軌道',count:orbitCounts['geo']||0,query:'geo'},
+    {label:'HEO 高軌道',count:orbitCounts['heo']||0,query:'heo'},
+  ]));
+  const purposes=PURPOSE_FILTERS.map(pf=>({label:pf.label,count:purposeCounts[pf.key]||0,query:pf.label.toLowerCase()})).filter(p=>p.count>0).sort((a,b)=>b.count-a.count);
+  resultsEl.appendChild(makeSection('衛星種別',purposes));
+  const sensors=DETAIL_FILTERS.map(df=>{let c=0;for(const m of df.match)c+=(detailCounts[m]||0);return{label:df.label,count:c,query:df.label.split('(')[0].trim().toLowerCase()};}).filter(s=>s.count>0).sort((a,b)=>b.count-a.count);
+  resultsEl.appendChild(makeSection('センサー / ミッション',sensors));
+  const years=Object.entries(yearCounts).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,10).map(([y,c])=>({label:y+'年',count:c,query:y}));
+  resultsEl.appendChild(makeSection('打上年',years));
+  resultsEl.appendChild(makeSection('クイック検索',[
+    {label:'日本 SAR',query:'japan sar'},{label:'日本 地球観測',query:'japan 地球観測'},
+    {label:'中国 LEO',query:'中国 leo'},{label:'低軌道 <500km',query:'leo <500km'},
+    {label:'Starlink',query:'starlink'},{label:'ISS',query:'iss'},
+  ]));
+}
+
+function initCommandPalette(){
   const input=document.getElementById('cmd-input');
   const chipsEl=document.getElementById('cmd-chips');
-  const suggestEl=document.getElementById('cmd-suggest');
   const countEl=document.getElementById('cmd-count');
   const resultsEl=document.getElementById('cmd-results');
   let cmdDebounce=null;
-  let cmdResults=[];
-  let cmdActiveIdx=-1;
 
-  // Build browsable categories for initial state
-  function showSuggestions(){
-    suggestEl.innerHTML='';
-    resultsEl.innerHTML='';
-    countEl.textContent='';
-
-    // Count per category
-    const countryCounts={},purposeCounts={},detailCounts={},orbitCounts={},yearCounts={};
-    for(const sat of allSatellites){
-      if(sat.altitude<=0)continue;
-      if(sat.owner)countryCounts[sat.owner]=(countryCounts[sat.owner]||0)+1;
-      if(sat.purpose)purposeCounts[sat.purpose]=(purposeCounts[sat.purpose]||0)+1;
-      if(sat.detail)detailCounts[sat.detail]=(detailCounts[sat.detail]||0)+1;
-      orbitCounts[sat.orbitType]=(orbitCounts[sat.orbitType]||0)+1;
-      if(sat.launchDate){const y=sat.launchDate.substring(0,4);yearCounts[y]=(yearCounts[y]||0)+1;}
-    }
-
-    function makeSection(title,items){
-      const sec=document.createElement('div');
-      sec.style.cssText='padding:8px 14px;border-bottom:1px solid #1a1a1a;';
-      sec.innerHTML=`<div style="font-size:9px;color:#555;margin-bottom:6px;">${title}</div>`;
-      const wrap=document.createElement('div');
-      wrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
-      for(const item of items){
-        const btn=document.createElement('button');btn.className='cmd-suggest-btn';
-        btn.innerHTML=`${item.label} <span style="color:#444;margin-left:2px;">${item.count}</span>`;
-        btn.addEventListener('click',()=>{input.value=item.query;input.dispatchEvent(new Event('input'));input.focus();});
-        wrap.appendChild(btn);
-      }
-      sec.appendChild(wrap);
-      return sec;
-    }
-
-    // Countries
-    const countries=COUNTRY_FILTERS
-      .map(cf=>({label:cf.label,count:countryCounts[cf.code]||0,query:cf.label.toLowerCase()}))
-      .filter(c=>c.count>0)
-      .sort((a,b)=>b.count-a.count);
-    resultsEl.appendChild(makeSection('国・地域',countries));
-
-    // Orbit types
-    const orbits=[
-      {label:'LEO 低軌道',count:orbitCounts['leo']||0,query:'leo'},
-      {label:'MEO 中軌道',count:orbitCounts['meo']||0,query:'meo'},
-      {label:'GEO 静止軌道',count:orbitCounts['geo']||0,query:'geo'},
-      {label:'HEO 高軌道',count:orbitCounts['heo']||0,query:'heo'},
-    ];
-    resultsEl.appendChild(makeSection('軌道',orbits));
-
-    // Purpose
-    const purposes=PURPOSE_FILTERS
-      .map(pf=>({label:pf.label,count:purposeCounts[pf.key]||0,query:pf.label.toLowerCase()}))
-      .filter(p=>p.count>0)
-      .sort((a,b)=>b.count-a.count);
-    resultsEl.appendChild(makeSection('衛星種別',purposes));
-
-    // Sensors
-    const sensors=DETAIL_FILTERS
-      .map(df=>{let c=0;for(const m of df.match)c+=(detailCounts[m]||0);return{label:df.label,count:c,query:df.label.split('(')[0].trim().toLowerCase()};})
-      .filter(s=>s.count>0)
-      .sort((a,b)=>b.count-a.count);
-    resultsEl.appendChild(makeSection('センサー / ミッション',sensors));
-
-    // Recent launch years (newest first, top 8)
-    const years=Object.entries(yearCounts)
-      .sort((a,b)=>b[0].localeCompare(a[0]))
-      .slice(0,10)
-      .map(([y,c])=>({label:y+'年',count:c,query:y}));
-    resultsEl.appendChild(makeSection('打上年',years));
-
-    // Quick combos
-    const combos=[
-      {label:'日本 SAR',query:'japan sar'},{label:'日本 地球観測',query:'japan 地球観測'},
-      {label:'中国 LEO',query:'中国 leo'},{label:'米国 GEO',query:'米国 geo'},
-      {label:'低軌道 <500km',query:'leo <500km'},{label:'Starlink',query:'starlink'},
-      {label:'Sentinel',query:'sentinel'},{label:'ISS',query:'iss'},
-    ];
-    resultsEl.appendChild(makeSection('クイック検索',combos));
-  }
-
-  // Open
-  function openPalette(){
-    overlay.classList.add('open');
-    input.value='';chipsEl.innerHTML='';resultsEl.innerHTML='';countEl.textContent='';
-    cmdFilterFn=null;cmdActiveIdx=-1;
-    showSuggestions();
-    setTimeout(()=>input.focus(),50);
-  }
-
-  // Close
-  function closePalette(){
-    overlay.classList.remove('open');
-    cmdFilterFn=null;cmdResults=[];
-    syncPointCloud(); // reset highlight
-  }
-
-  // Keyboard shortcut: / to open
+  // Keyboard
   document.addEventListener('keydown',e=>{
-    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'){
-      e.preventDefault();openPalette();
-    }
-    if(e.key==='Escape'&&overlay.classList.contains('open')){closePalette();}
-    // Arrow navigation
-    if(overlay.classList.contains('open')){
-      if(e.key==='ArrowDown'){e.preventDefault();cmdActiveIdx=Math.min(cmdActiveIdx+1,cmdResults.length-1);updateActiveResult();}
-      if(e.key==='ArrowUp'){e.preventDefault();cmdActiveIdx=Math.max(cmdActiveIdx-1,-1);updateActiveResult();}
-      if(e.key==='Enter'&&cmdActiveIdx>=0&&cmdResults[cmdActiveIdx]){
-        e.preventDefault();selectResult(cmdResults[cmdActiveIdx]);
-      }
+    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'){e.preventDefault();openCommandPalette();}
+    if(e.key==='Escape'&&cmdOpen)closeCommandPalette();
+    if(cmdOpen){
+      if(e.key==='ArrowDown'){e.preventDefault();cmdActiveIdx=Math.min(cmdActiveIdx+1,cmdResults.length-1);updateActive();}
+      if(e.key==='ArrowUp'){e.preventDefault();cmdActiveIdx=Math.max(cmdActiveIdx-1,-1);updateActive();}
+      if(e.key==='Enter'&&cmdActiveIdx>=0&&cmdResults[cmdActiveIdx]){e.preventDefault();selectResult(cmdResults[cmdActiveIdx]);}
     }
   });
+  document.getElementById('cmd-overlay').addEventListener('click',e=>{if(e.target.id==='cmd-overlay')closeCommandPalette();});
+  // #17: close button
+  document.getElementById('cmd-close').addEventListener('click',()=>closeCommandPalette());
 
-  // Click backdrop to close
-  overlay.addEventListener('click',e=>{if(e.target===overlay)closePalette();});
-
-  // Search button in sidebar (reuse existing search tab button)
-  // Also make the search tab open the palette instead
-  const searchTabBtn=document.querySelector('[data-tab="search-tab"]');
-  if(searchTabBtn){
-    searchTabBtn.addEventListener('click',e=>{
-      e.stopPropagation();openPalette();
-      // Keep filter tab active
-      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-      document.querySelector('[data-tab="filter-tab"]').classList.add('active');
-    });
+  function updateActive(){
+    resultsEl.querySelectorAll('.cmd-item').forEach((el,i)=>{el.classList.toggle('active',i===cmdActiveIdx);if(i===cmdActiveIdx)el.scrollIntoView({block:'nearest'});});
   }
-
-  function updateActiveResult(){
-    resultsEl.querySelectorAll('.cmd-item').forEach((el,i)=>{
-      el.classList.toggle('active',i===cmdActiveIdx);
-      if(i===cmdActiveIdx)el.scrollIntoView({block:'nearest'});
-    });
-  }
-
   function selectResult(sat){
-    // Set selectedSat BEFORE closing palette so syncPointCloud sees it
     selectedSat=sat;
-    overlay.classList.remove('open');
+    document.getElementById('cmd-overlay').classList.remove('open');cmdOpen=false;
     cmdFilterFn=null;cmdResults=[];
-    // Now sync with selectedSat already set — satellite stays highlighted
-    syncPointCloud();
-    flyToSatellite(sat);
+    syncPointCloud();flyToSatellite(sat);
   }
 
-  // Live search on input
   input.addEventListener('input',()=>{
     clearTimeout(cmdDebounce);
     cmdDebounce=setTimeout(()=>{
       const q=input.value.trim();
-      if(!q){
-        chipsEl.innerHTML='';cmdFilterFn=null;cmdResults=[];
-        showSuggestions();syncPointCloud();return;
-      }
+      if(!q){chipsEl.innerHTML='';cmdFilterFn=null;cmdResults=[];showPaletteBrowse();syncPointCloud();return;}
       const {filters,chips}=parseCommandTokens(q);
-
-      // Show chips
       chipsEl.innerHTML='';
-      for(const c of chips){
-        const el=document.createElement('span');el.className='cmd-chip';el.textContent=c.label;
-        chipsEl.appendChild(el);
-      }
-
-      // Build filter and apply to globe immediately
+      for(const c of chips){const el=document.createElement('span');el.className='cmd-chip';el.textContent=c.label;chipsEl.appendChild(el);}
       const fn=buildFilterFn(filters);
-      cmdFilterFn=fn;
-      syncPointCloud();
-
-      // Find matches for result list
+      cmdFilterFn=fn;syncPointCloud();
+      // Count total matches
+      let totalMatches=0;
       cmdResults=[];cmdActiveIdx=-1;
       for(const sat of allSatellites){
         if(sat.altitude<=0)continue;
-        if(fn(sat)){cmdResults.push(sat);if(cmdResults.length>=100)break;}
+        if(fn(sat)){totalMatches++;if(cmdResults.length<100)cmdResults.push(sat);}
       }
-
-      countEl.textContent=`${cmdResults.length}${cmdResults.length>=100?'+':''} 件がハイライト中`;
-
-      // Render results
+      countEl.textContent=`${totalMatches.toLocaleString()} 件ハイライト中${totalMatches>100?' (リスト: 100件)':''}`;
       resultsEl.innerHTML='';
       for(const sat of cmdResults){
         const item=document.createElement('div');item.className='cmd-item';
@@ -1294,7 +1126,7 @@ function initCommandPalette(){
             ${sat.purpose?`<span class="ci-tag">${sat.purpose}</span>`:''}
             ${ownerLabel?`<span class="ci-tag">${ownerLabel}</span>`:''}
             ${yearLabel?`<span class="ci-tag">${yearLabel}</span>`:''}
-            <span style="color:#333">${sat.altitude.toFixed(0)}km</span>
+            <span style="color:#444">${sat.altitude.toFixed(0)}km</span>
           </div>`;
         item.addEventListener('click',()=>selectResult(sat));
         resultsEl.appendChild(item);
@@ -1304,109 +1136,10 @@ function initCommandPalette(){
 }
 
 // ============================================================
-// SEARCH (legacy tab — now opens command palette)
-// ============================================================
-let searchDebounce=null;
-
-function initSearch(){
-  const input=document.getElementById('search-input');
-  const results=document.getElementById('search-results');
-  const countEl=document.getElementById('search-count');
-
-  input.addEventListener('input',()=>{
-    clearTimeout(searchDebounce);
-    searchDebounce=setTimeout(()=>doSearch(input.value.trim()),150);
-  });
-
-  function doSearch(query){
-    results.innerHTML='';
-    if(query.length<2){countEl.textContent='2文字以上で検索';return;}
-
-    const q=query.toLowerCase();
-    const matches=[];
-    for(const sat of allSatellites){
-      if(sat.altitude<=0)continue;
-      const nameMatch=sat.name.toLowerCase().includes(q);
-      const noradMatch=sat.noradId.includes(q);
-      const purposeMatch=sat.purpose.toLowerCase().includes(q);
-      const detailMatch=sat.detail.toLowerCase().includes(q);
-      const ownerMatch=(OWNER_NAMES[sat.owner]||'').toLowerCase().includes(q)||sat.owner.toLowerCase().includes(q);
-      if(nameMatch||noradMatch||purposeMatch||detailMatch||ownerMatch){
-        matches.push(sat);
-        if(matches.length>=100)break;
-      }
-    }
-
-    countEl.textContent=`${matches.length}${matches.length>=100?'+':''} 件`;
-
-    for(const sat of matches){
-      const item=document.createElement('div');
-      item.className='search-item';
-
-      // Purpose tag
-      let tagClass='';let tagLabel='';
-      if(sat.purpose.includes('Earth')||sat.purpose.includes('Meteor')){tagClass='eo';tagLabel=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):sat.purpose;}
-      else if(sat.purpose.includes('Comm')){tagClass='comm';tagLabel='通信';}
-      else if(sat.purpose.includes('Nav')){tagClass='nav';tagLabel='測位';}
-      else if(sat.purpose.includes('Science')||sat.purpose.includes('Space')){tagClass='sci';tagLabel=sat.purpose;}
-      else if(sat.purpose){tagLabel=sat.purpose;}
-
-      const ownerLabel=OWNER_NAMES[sat.owner]||sat.owner||'';
-      const tags=(tagLabel?`<span class="si-tag ${tagClass}">${tagLabel}</span>`:'')
-        +(ownerLabel?`<span class="si-tag">${ownerLabel}</span>`:'')
-        +(sat.launchDate?`<span class="si-tag">${sat.launchDate.substring(0,4)}</span>`:'');
-
-      item.innerHTML=`
-        <div class="si-name${sat.isJapanese?' jpn':''}">${sat.name}</div>
-        <div class="si-meta">${tags} <span style="color:#444">NORAD:${sat.noradId} | ${sat.altitude.toFixed(0)}km</span></div>
-      `;
-
-      item.addEventListener('click',()=>{
-        flyToSatellite(sat);
-        // Switch to filter tab to show the 3D view
-        document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-        document.querySelector('[data-tab="filter-tab"]').classList.add('active');
-        document.getElementById('filter-tab').classList.add('active');
-        // On mobile, close sidebar
-        document.getElementById('ui').classList.remove('open');
-        document.getElementById('ui-toggle').classList.remove('open');
-      });
-      results.appendChild(item);
-    }
-  }
-}
-
-// ============================================================
-// TAB SWITCHING
-// ============================================================
-function initTabs(){
-  document.querySelectorAll('.tab-btn').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
-      // Focus search input when switching to search tab
-      if(btn.dataset.tab==='search-tab')setTimeout(()=>document.getElementById('search-input').focus(),100);
-    });
-  });
-
-  // Detail panel close
-  document.getElementById('dp-close').addEventListener('click',()=>{
-    document.getElementById('detail-panel').style.display='none';
-    selectedSat=null;clearOrbitTrack();
-  });
-}
-
-// ============================================================
-let lastPropTime=0;
+let lastPropTime=0, lastOrbitUpdateTime=0;
 function animate(time){
   requestAnimationFrame(animate);
-
-  // Fly animation
   updateFly(time);
-
   camera.position.set(spherical.radius*Math.sin(spherical.phi)*Math.cos(spherical.theta),spherical.radius*Math.cos(spherical.phi),spherical.radius*Math.sin(spherical.phi)*Math.sin(spherical.theta));
   camera.lookAt(0,0,0);
 
@@ -1416,9 +1149,14 @@ function animate(time){
 
   if(time-lastPropTime>150){
     updateSatellitePositions();syncPointCloud();lastPropTime=time;
-    // Update detail panel if satellite selected
-    if(selectedSat&&selectedSat.altitude>0)showDetailPanel(selectedSat);
+    // #8: only update live values
+    if(selectedSat&&selectedSat.altitude>0)updateDetailPanelLive(selectedSat);
   }
+  // #12: re-compute orbit track every 30 seconds to stay accurate
+  if(selectedSat&&time-lastOrbitUpdateTime>30000){
+    showOrbitTrack(selectedSat);lastOrbitUpdateTime=time;
+  }
+
   if(Math.floor(time/1000)!==Math.floor((time-16)/1000))document.getElementById('update-time').textContent=new Date().toLocaleTimeString('ja-JP');
   updateTooltip();renderer.render(scene,camera);
 }
@@ -1429,7 +1167,7 @@ async function main(){
   await loadSatelliteData();
   document.getElementById('loading').style.display='none';
   updateSatellitePositions();createSatelliteCloud();syncPointCloud();initUI();
-  initTabs();initSearch();initCommandPalette();
+  initCommandPalette();
   document.getElementById('update-time').textContent=new Date().toLocaleTimeString('ja-JP');
   requestAnimationFrame(animate);
 }
