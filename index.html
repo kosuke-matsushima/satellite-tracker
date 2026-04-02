@@ -65,6 +65,67 @@
   .legend-item { display: flex; align-items: center; font-size: 9px; color: #888; margin: 3px 0; }
   .legend-dot { width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
 
+  /* Tab switcher */
+  .tab-bar { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #222; }
+  .tab-btn {
+    flex: 1; padding: 8px 0; font-size: 10px; text-align: center; cursor: pointer;
+    background: transparent; border: none; border-bottom: 2px solid transparent;
+    color: #555; font-family: inherit; transition: all 0.2s;
+  }
+  .tab-btn.active { color: #7affc1; border-bottom-color: #7affc1; }
+  .tab-btn:hover { color: #7affc1; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Search panel */
+  #search-input {
+    width: 100%; padding: 8px 10px; background: #111; border: 1px solid #333;
+    color: #fff; font-family: inherit; font-size: 11px; border-radius: 6px;
+    outline: none; margin-bottom: 8px;
+  }
+  #search-input:focus { border-color: #7affc1; }
+  #search-results {
+    max-height: calc(100vh - 160px); overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .search-item {
+    padding: 8px 10px; border-bottom: 1px solid #1a1a1a; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .search-item:hover { background: rgba(122,255,193,0.06); }
+  .search-item .si-name { font-size: 11px; color: #ccc; margin-bottom: 2px; }
+  .search-item .si-name.jpn { color: #ff8866; }
+  .search-item .si-meta { font-size: 9px; color: #555; }
+  .search-item .si-tag {
+    display: inline-block; padding: 1px 5px; font-size: 8px;
+    border: 1px solid #333; border-radius: 6px; margin-right: 3px; color: #666;
+  }
+  .search-item .si-tag.eo { border-color: #7affc1; color: #7affc1; }
+  .search-item .si-tag.comm { border-color: #ffc87a; color: #ffc87a; }
+  .search-item .si-tag.nav { border-color: #ff7aa0; color: #ff7aa0; }
+  .search-item .si-tag.sci { border-color: #c07aff; color: #c07aff; }
+  .search-count { font-size: 9px; color: #555; margin-bottom: 6px; }
+
+  /* Detail panel (shown when satellite selected) */
+  #detail-panel {
+    position: fixed; bottom: 0; left: 300px; right: 0;
+    background: rgba(0,0,0,0.92); border-top: 1px solid #222;
+    padding: 14px 20px; z-index: 10; display: none;
+    max-height: 200px; overflow-y: auto;
+  }
+  #detail-panel .dp-name { font-size: 14px; color: #7affc1; margin-bottom: 6px; font-weight: bold; }
+  #detail-panel .dp-name.jpn { color: #ff8866; }
+  #detail-panel .dp-row { display: inline-block; font-size: 10px; color: #888; margin-right: 16px; margin-bottom: 3px; }
+  #detail-panel .dp-val { color: #ccc; }
+  #detail-panel .dp-close {
+    position: absolute; top: 10px; right: 16px; background: none; border: none;
+    color: #555; font-size: 16px; cursor: pointer; font-family: inherit;
+  }
+  #detail-panel .dp-close:hover { color: #fff; }
+  @media (max-width: 768px) {
+    #detail-panel { left: 0; }
+  }
+
   /* Mobile toggle */
   #ui-toggle {
     display: none; position: fixed; top: 10px; left: 10px; z-index: 20;
@@ -98,50 +159,62 @@
   <h1>SATELLITE TRACKER</h1>
   <div class="subtitle">Real-time orbital visualization — SGP4</div>
 
-  <div class="stat">表示中: <span id="visible-count">0</span> / <span id="total-count">0</span></div>
-  <div class="stat">時刻: <span id="update-time">—</span></div>
-
-  <div class="section">
-    <label>国・地域フィルター</label>
-    <div class="tags" id="country-filters"></div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="filter-tab">フィルター</button>
+    <button class="tab-btn" data-tab="search-tab">検索</button>
   </div>
 
-  <div class="section">
-    <label>衛星種別</label>
-    <div class="tags" id="purpose-filters"></div>
+  <!-- FILTER TAB -->
+  <div class="tab-content active" id="filter-tab">
+    <div class="stat">表示中: <span id="visible-count">0</span> / <span id="total-count">0</span></div>
+    <div class="stat">時刻: <span id="update-time">—</span></div>
+
+    <div class="section">
+      <label>国・地域</label>
+      <div class="tags" id="country-filters"></div>
+    </div>
+    <div class="section">
+      <label>衛星種別</label>
+      <div class="tags" id="purpose-filters"></div>
+    </div>
+    <div class="section">
+      <label>センサー / ミッション</label>
+      <div class="tags" id="detail-filters"></div>
+    </div>
+    <div class="section">
+      <label>軌道カテゴリ</label>
+      <div class="tags" id="orbit-filters"></div>
+    </div>
+    <div class="section">
+      <label>高度 (km)</label>
+      <input type="range" id="alt-min" min="0" max="50000" value="0" step="100">
+      <div class="range-labels"><span>下限: <span id="alt-min-val">0</span> km</span></div>
+      <div style="height:6px"></div>
+      <input type="range" id="alt-max" min="0" max="50000" value="50000" step="100">
+      <div class="range-labels"><span>上限: <span id="alt-max-val">50,000</span> km</span></div>
+    </div>
+    <div class="section">
+      <label>色分け（実スケール）</label>
+      <div class="legend-item"><div class="legend-dot" style="background:#7affc1;"></div>LEO (〜2,000 km)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffc87a;"></div>MEO (2,000–35,000 km)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff7aa0;"></div>GEO (~35,786 km)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c07aff;"></div>HEO (>36,000 km)</div>
+    </div>
   </div>
 
-  <div class="section">
-    <label>センサー / ミッション</label>
-    <div class="tags" id="detail-filters"></div>
+  <!-- SEARCH TAB -->
+  <div class="tab-content" id="search-tab">
+    <input type="text" id="search-input" placeholder="衛星名、NORAD ID、種別で検索...">
+    <div class="search-count" id="search-count"></div>
+    <div id="search-results"></div>
   </div>
+</div>
 
-  <div class="section">
-    <label>軌道カテゴリ</label>
-    <div class="tags" id="orbit-filters"></div>
-  </div>
-
-  <div class="section">
-    <label>高度 (km)</label>
-    <input type="range" id="alt-min" min="0" max="50000" value="0" step="100">
-    <div class="range-labels"><span>下限: <span id="alt-min-val">0</span> km</span></div>
-    <div style="height:6px"></div>
-    <input type="range" id="alt-max" min="0" max="50000" value="50000" step="100">
-    <div class="range-labels"><span>上限: <span id="alt-max-val">50,000</span> km</span></div>
-  </div>
-
-  <div class="section">
-    <label>色分け（実スケール）</label>
-    <div class="legend-item"><div class="legend-dot" style="background:#7affc1;"></div>LEO 低軌道 (〜2,000 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ffc87a;"></div>MEO 中軌道 (2,000–35,000 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#ff7aa0;"></div>GEO 静止軌道 (~35,786 km)</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#c07aff;"></div>HEO 高軌道 (>36,000 km)</div>
-  </div>
-
-  <div class="section" style="font-size:9px;color:#444;">
-    ドラッグ: 回転 / スクロール: ズーム / ホバー: 詳細
-    <br>データ: CelesTrak OMM + SATCAT
-  </div>
+<!-- Detail panel (bottom bar) -->
+<div id="detail-panel">
+  <button class="dp-close" id="dp-close">&times;</button>
+  <div class="dp-name" id="dp-name"></div>
+  <div id="dp-info"></div>
 </div>
 
 <div id="tooltip">
@@ -252,7 +325,10 @@ raycaster.params.Points.threshold=0.04;
 let isDragging=false,dragMoved=false;
 let prevMouse={x:0,y:0};
 let spherical={theta:0,phi:PI/2,radius:4};
-let touchDist=0; // for pinch zoom
+let touchDist=0;
+let selectedSat=null; // currently selected satellite for detail view
+let flyTarget=null; // {theta, phi, radius, startTime, duration}
+let flyStart=null; // {theta, phi, radius}
 
 // ============================================================
 function ommToSatrec(omm){
@@ -628,9 +704,181 @@ function updateTooltip(){
 }
 
 // ============================================================
+// FLY TO SATELLITE — smooth camera animation
+// ============================================================
+function flyToSatellite(sat){
+  if(sat.altitude<=0)return;
+  selectedSat=sat;
+  // Compute target spherical coords to look at the satellite
+  const p=sat.position;
+  const targetTheta=Math.atan2(p.z,p.x);
+  const targetPhi=Math.acos(Math.max(-1,Math.min(1,p.y/p.length())));
+  const r=p.length();
+  const targetRadius=Math.max(r*1.8,2.5); // pull back to see it
+
+  flyStart={theta:spherical.theta,phi:spherical.phi,radius:spherical.radius};
+  flyTarget={theta:targetTheta,phi:targetPhi,radius:targetRadius,startTime:performance.now(),duration:1200};
+
+  showDetailPanel(sat);
+}
+
+function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
+
+function updateFly(time){
+  if(!flyTarget)return;
+  const elapsed=time-flyTarget.startTime;
+  const progress=Math.min(elapsed/flyTarget.duration,1);
+  const t=easeInOut(progress);
+
+  // Interpolate spherical coordinates
+  // Handle theta wrapping
+  let dTheta=flyTarget.theta-flyStart.theta;
+  if(dTheta>PI)dTheta-=2*PI;
+  if(dTheta<-PI)dTheta+=2*PI;
+
+  spherical.theta=flyStart.theta+dTheta*t;
+  spherical.phi=flyStart.phi+(flyTarget.phi-flyStart.phi)*t;
+  spherical.radius=flyStart.radius+(flyTarget.radius-flyStart.radius)*t;
+
+  if(progress>=1)flyTarget=null;
+}
+
+// ============================================================
+// DETAIL PANEL
+// ============================================================
+function showDetailPanel(sat){
+  const dp=document.getElementById('detail-panel');
+  dp.style.display='block';
+  const nameEl=document.getElementById('dp-name');
+  nameEl.textContent=sat.name;
+  nameEl.className='dp-name'+(sat.isJapanese?' jpn':'');
+
+  const info=document.getElementById('dp-info');
+  const ownerName=OWNER_NAMES[sat.owner]||sat.owner||'—';
+  const purposeStr=sat.purpose||'—';
+  const detailStr=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):'—';
+  const launchStr=sat.launchDate||'—';
+  const siteStr=sat.launchSite?(LAUNCH_SITE_NAMES[sat.launchSite]||sat.launchSite):'';
+  const period=(2*PI*Math.sqrt(Math.pow(EARTH_RADIUS_KM+sat.altitude,3)/398600.4418)/60).toFixed(1);
+
+  info.innerHTML=`
+    <span class="dp-row">運用: <span class="dp-val">${ownerName}</span></span>
+    <span class="dp-row">目的: <span class="dp-val">${purposeStr}</span></span>
+    <span class="dp-row">詳細: <span class="dp-val">${detailStr}</span></span>
+    <span class="dp-row">打上: <span class="dp-val">${launchStr}${siteStr?' ('+siteStr+')':''}</span></span>
+    <span class="dp-row">NORAD: <span class="dp-val">${sat.noradId}</span></span>
+    <br>
+    <span class="dp-row">高度: <span class="dp-val">${sat.altitude.toFixed(1)} km</span></span>
+    <span class="dp-row">速度: <span class="dp-val">${sat.velocity.toFixed(2)} km/s</span></span>
+    <span class="dp-row">周期: <span class="dp-val">${period} 分</span></span>
+    <span class="dp-row">直下点: <span class="dp-val">${sat.lat.toFixed(2)}°N, ${sat.lon.toFixed(2)}°E</span></span>
+  `;
+}
+
+// ============================================================
+// SEARCH
+// ============================================================
+let searchDebounce=null;
+
+function initSearch(){
+  const input=document.getElementById('search-input');
+  const results=document.getElementById('search-results');
+  const countEl=document.getElementById('search-count');
+
+  input.addEventListener('input',()=>{
+    clearTimeout(searchDebounce);
+    searchDebounce=setTimeout(()=>doSearch(input.value.trim()),150);
+  });
+
+  function doSearch(query){
+    results.innerHTML='';
+    if(query.length<2){countEl.textContent='2文字以上で検索';return;}
+
+    const q=query.toLowerCase();
+    const matches=[];
+    for(const sat of allSatellites){
+      if(sat.altitude<=0)continue;
+      const nameMatch=sat.name.toLowerCase().includes(q);
+      const noradMatch=sat.noradId.includes(q);
+      const purposeMatch=sat.purpose.toLowerCase().includes(q);
+      const detailMatch=sat.detail.toLowerCase().includes(q);
+      const ownerMatch=(OWNER_NAMES[sat.owner]||'').toLowerCase().includes(q)||sat.owner.toLowerCase().includes(q);
+      if(nameMatch||noradMatch||purposeMatch||detailMatch||ownerMatch){
+        matches.push(sat);
+        if(matches.length>=100)break;
+      }
+    }
+
+    countEl.textContent=`${matches.length}${matches.length>=100?'+':''} 件`;
+
+    for(const sat of matches){
+      const item=document.createElement('div');
+      item.className='search-item';
+
+      // Purpose tag
+      let tagClass='';let tagLabel='';
+      if(sat.purpose.includes('Earth')||sat.purpose.includes('Meteor')){tagClass='eo';tagLabel=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):sat.purpose;}
+      else if(sat.purpose.includes('Comm')){tagClass='comm';tagLabel='通信';}
+      else if(sat.purpose.includes('Nav')){tagClass='nav';tagLabel='測位';}
+      else if(sat.purpose.includes('Science')||sat.purpose.includes('Space')){tagClass='sci';tagLabel=sat.purpose;}
+      else if(sat.purpose){tagLabel=sat.purpose;}
+
+      const ownerLabel=OWNER_NAMES[sat.owner]||sat.owner||'';
+      const tags=(tagLabel?`<span class="si-tag ${tagClass}">${tagLabel}</span>`:'')
+        +(ownerLabel?`<span class="si-tag">${ownerLabel}</span>`:'')
+        +(sat.launchDate?`<span class="si-tag">${sat.launchDate.substring(0,4)}</span>`:'');
+
+      item.innerHTML=`
+        <div class="si-name${sat.isJapanese?' jpn':''}">${sat.name}</div>
+        <div class="si-meta">${tags} <span style="color:#444">NORAD:${sat.noradId} | ${sat.altitude.toFixed(0)}km</span></div>
+      `;
+
+      item.addEventListener('click',()=>{
+        flyToSatellite(sat);
+        // Switch to filter tab to show the 3D view
+        document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+        document.querySelector('[data-tab="filter-tab"]').classList.add('active');
+        document.getElementById('filter-tab').classList.add('active');
+        // On mobile, close sidebar
+        document.getElementById('ui').classList.remove('open');
+        document.getElementById('ui-toggle').classList.remove('open');
+      });
+      results.appendChild(item);
+    }
+  }
+}
+
+// ============================================================
+// TAB SWITCHING
+// ============================================================
+function initTabs(){
+  document.querySelectorAll('.tab-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      // Focus search input when switching to search tab
+      if(btn.dataset.tab==='search-tab')setTimeout(()=>document.getElementById('search-input').focus(),100);
+    });
+  });
+
+  // Detail panel close
+  document.getElementById('dp-close').addEventListener('click',()=>{
+    document.getElementById('detail-panel').style.display='none';
+    selectedSat=null;
+  });
+}
+
+// ============================================================
 let lastPropTime=0;
 function animate(time){
   requestAnimationFrame(animate);
+
+  // Fly animation
+  updateFly(time);
+
   camera.position.set(spherical.radius*Math.sin(spherical.phi)*Math.cos(spherical.theta),spherical.radius*Math.cos(spherical.phi),spherical.radius*Math.sin(spherical.phi)*Math.sin(spherical.theta));
   camera.lookAt(0,0,0);
 
@@ -638,7 +886,11 @@ function animate(time){
   const t=time*0.001;
   for(const sat of allSatellites){if(sat._sprite&&sat._sprite.visible){const p=sat._shimmerPhase||(sat._shimmerPhase=Math.random());sat._sprite.material.opacity=0.55+0.45*Math.sin(t*(0.8+p*0.6)+p*6.2831);}}
 
-  if(time-lastPropTime>150){updateSatellitePositions();syncPointCloud();lastPropTime=time;}
+  if(time-lastPropTime>150){
+    updateSatellitePositions();syncPointCloud();lastPropTime=time;
+    // Update detail panel if satellite selected
+    if(selectedSat&&selectedSat.altitude>0)showDetailPanel(selectedSat);
+  }
   if(Math.floor(time/1000)!==Math.floor((time-16)/1000))document.getElementById('update-time').textContent=new Date().toLocaleTimeString('ja-JP');
   updateTooltip();renderer.render(scene,camera);
 }
@@ -649,6 +901,7 @@ async function main(){
   await loadSatelliteData();
   document.getElementById('loading').style.display='none';
   updateSatellitePositions();createSatelliteCloud();syncPointCloud();initUI();
+  initTabs();initSearch();
   document.getElementById('update-time').textContent=new Date().toLocaleTimeString('ja-JP');
   requestAnimationFrame(animate);
 }
