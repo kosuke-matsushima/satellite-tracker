@@ -126,6 +126,53 @@
     #detail-panel { left: 0; }
   }
 
+  /* Command Palette */
+  #cmd-overlay {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+    align-items: flex-start; justify-content: center; padding-top: 15vh;
+  }
+  #cmd-overlay.open { display: flex; }
+  #cmd-box {
+    width: 520px; max-width: 90vw; background: rgba(10,10,20,0.95);
+    border: 1px solid #333; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+  }
+  #cmd-input {
+    width: 100%; padding: 14px 16px; background: transparent; border: none;
+    border-bottom: 1px solid #222; color: #fff; font-family: inherit;
+    font-size: 15px; outline: none;
+  }
+  #cmd-input::placeholder { color: #444; }
+  #cmd-chips { padding: 6px 12px; min-height: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .cmd-chip {
+    padding: 2px 8px; font-size: 9px; border-radius: 8px;
+    background: rgba(122,255,193,0.15); color: #7affc1; border: 1px solid rgba(122,255,193,0.3);
+  }
+  #cmd-suggest { padding: 6px 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .cmd-suggest-btn {
+    padding: 3px 10px; font-size: 9px; border: 1px solid #2a2a2a; border-radius: 10px;
+    background: transparent; color: #555; cursor: pointer; font-family: inherit;
+  }
+  .cmd-suggest-btn:hover { border-color: #7affc1; color: #7affc1; }
+  #cmd-results {
+    max-height: 45vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #cmd-count { padding: 4px 14px; font-size: 9px; color: #444; }
+  .cmd-item {
+    padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #1a1a1a;
+    transition: background 0.1s;
+  }
+  .cmd-item:hover, .cmd-item.active { background: rgba(122,255,193,0.08); }
+  .cmd-item .ci-name { font-size: 12px; color: #ddd; }
+  .cmd-item .ci-name.jpn { color: #ff8866; }
+  .cmd-item .ci-sub { font-size: 9px; color: #555; margin-top: 2px; }
+  .cmd-item .ci-tag {
+    display: inline-block; padding: 1px 5px; font-size: 8px;
+    border: 1px solid #333; border-radius: 6px; margin-right: 3px; color: #555;
+  }
+  .cmd-item .ci-tag.hl { border-color: #7affc1; color: #7affc1; }
+
   /* Mobile toggle */
   #ui-toggle {
     display: none; position: fixed; top: 10px; left: 10px; z-index: 20;
@@ -207,6 +254,17 @@
     <input type="text" id="search-input" placeholder="衛星名、NORAD ID、種別で検索...">
     <div class="search-count" id="search-count"></div>
     <div id="search-results"></div>
+  </div>
+</div>
+
+<!-- Command Palette -->
+<div id="cmd-overlay">
+  <div id="cmd-box">
+    <input id="cmd-input" type="text" placeholder="衛星名・国・種別で検索... (例: japan sar, leo <500km)" autocomplete="off">
+    <div id="cmd-chips"></div>
+    <div id="cmd-suggest"></div>
+    <div id="cmd-count"></div>
+    <div id="cmd-results"></div>
   </div>
 </div>
 
@@ -326,9 +384,11 @@ let isDragging=false,dragMoved=false;
 let prevMouse={x:0,y:0};
 let spherical={theta:0,phi:PI/2,radius:4};
 let touchDist=0;
-let selectedSat=null; // currently selected satellite for detail view
-let flyTarget=null; // {theta, phi, radius, startTime, duration}
-let flyStart=null; // {theta, phi, radius}
+let selectedSat=null;
+let flyTarget=null;
+let flyStart=null;
+let orbitLine=null; // THREE.Line for orbital track
+let cmdFilterFn=null; // function(sat)=>bool for command palette live highlight
 
 // ============================================================
 function ommToSatrec(omm){
@@ -487,21 +547,20 @@ const HIGHLIGHT_COLOR=new THREE.Color(0xff4444); // bright red-orange for highli
 const DIM_ALPHA=0.08; // very dim for non-highlighted when a filter is active
 const SELECTED_COLOR=new THREE.Color(0xff2222); // selected satellite from search
 
-// Check if any highlight filter is active
 function hasActiveHighlight(){
-  return activeCountryFilter||activePurposeFilter||activeDetailFilter||selectedSat;
+  return activeCountryFilter||activePurposeFilter||activeDetailFilter||selectedSat||cmdFilterFn;
 }
 
-// Check if a satellite matches the active highlight filters
 function isHighlighted(sat){
   if(selectedSat&&sat===selectedSat)return 'selected';
+  // Command palette live filter takes priority
+  if(cmdFilterFn){return cmdFilterFn(sat)?'highlighted':false;}
   const matchCountry=!activeCountryFilter||sat.owner===activeCountryFilter;
   const matchPurpose=!activePurposeFilter||sat.purpose===activePurposeFilter;
   const matchDetail=!activeDetailFilter||activeDetailFilter.includes(sat.detail);
   if(activeCountryFilter&&!matchCountry)return false;
   if(activePurposeFilter&&!matchPurpose)return false;
   if(activeDetailFilter&&!matchDetail)return false;
-  // If at least one highlight filter is active and satellite matches all active ones
   if(activeCountryFilter||activePurposeFilter||activeDetailFilter)return 'highlighted';
   return 'normal';
 }
@@ -765,6 +824,7 @@ function flyToSatellite(sat){
   flyTarget={theta:targetTheta,phi:targetPhi,radius:targetRadius,startTime:performance.now(),duration:1200};
 
   showDetailPanel(sat);
+  showOrbitTrack(sat);
 }
 
 function easeInOut(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
@@ -817,11 +877,308 @@ function showDetailPanel(sat){
     <span class="dp-row">速度: <span class="dp-val">${sat.velocity.toFixed(2)} km/s</span></span>
     <span class="dp-row">周期: <span class="dp-val">${period} 分</span></span>
     <span class="dp-row">直下点: <span class="dp-val">${sat.lat.toFixed(2)}°N, ${sat.lon.toFixed(2)}°E</span></span>
+    ${sat._orbitInfo?`<br><span class="dp-row" style="color:#7affc1">軌道表示: <span class="dp-val">${sat._orbitInfo.revolutions}周 / ${sat._orbitInfo.totalHours}時間分（周期 ${sat._orbitInfo.periodMin.toFixed(1)}分）</span></span>`:''}
   `;
 }
 
 // ============================================================
-// SEARCH
+// ORBIT TRACK — draw orbital path when satellite selected
+// ============================================================
+const ORBIT_REVOLUTIONS=10; // 10周分の軌道を表示
+
+function showOrbitTrack(sat){
+  clearOrbitTrack();
+  if(!sat||sat.altitude<=0)return;
+
+  const now=new Date();
+  const meanMotion=sat.satrec.no*1440/(2*PI); // rev/day
+  const periodMin=meanMotion>0?1440/meanMotion:90;
+  const periodMs=periodMin*60*1000;
+  const totalMs=periodMs*ORBIT_REVOLUTIONS;
+  const totalHours=(totalMs/3600000).toFixed(1);
+  const steps=ORBIT_REVOLUTIONS*120; // 120 points per revolution
+  const points=[];
+
+  for(let i=0;i<=steps;i++){
+    const t=new Date(now.getTime()+(i/steps)*totalMs);
+    try{
+      const gmst=satellite.gstime(t);
+      const pv=satellite.propagate(sat.satrec,t);
+      if(!pv.position)continue;
+      const geo=satellite.eciToGeodetic(pv.position,gmst);
+      const lat=satellite.degreesLat(geo.latitude);
+      const lon=satellite.degreesLong(geo.longitude);
+      const alt=geo.height;
+      const r=altToRadius(alt);
+      const phi=(90-lat)*DEG2RAD;
+      const theta=(lon+180)*DEG2RAD;
+      points.push(new THREE.Vector3(
+        r*Math.sin(phi)*Math.cos(theta),r*Math.cos(phi),r*Math.sin(phi)*Math.sin(theta)
+      ));
+    }catch(e){}
+  }
+
+  if(points.length<10)return;
+
+  // Color gradient: each revolution gets slightly different hue to show same vs different path
+  const geo=new THREE.BufferGeometry().setFromPoints(points);
+  const colors=new Float32Array(points.length*3);
+  for(let i=0;i<points.length;i++){
+    const progress=i/points.length;
+    const rev=Math.floor(progress*ORBIT_REVOLUTIONS);
+    // Cycle through colors per revolution to distinguish tracks
+    const hue=(rev/ORBIT_REVOLUTIONS)*0.3; // 0 to 0.3 (green→cyan→blue shift)
+    const alpha=1.0-progress*0.6; // fade over time
+    const c=new THREE.Color().setHSL(0.45-hue,0.9,0.5+alpha*0.3);
+    colors[i*3]=c.r*alpha; colors[i*3+1]=c.g*alpha; colors[i*3+2]=c.b*alpha;
+  }
+  geo.setAttribute('color',new THREE.BufferAttribute(colors,3));
+
+  const mat=new THREE.LineBasicMaterial({
+    vertexColors:true,transparent:true,opacity:0.7,
+    depthWrite:false,blending:THREE.AdditiveBlending,
+  });
+  orbitLine=new THREE.Line(geo,mat);
+  scene.add(orbitLine);
+
+  // Store orbit info for detail panel
+  sat._orbitInfo={revolutions:ORBIT_REVOLUTIONS,periodMin,totalHours};
+}
+
+function clearOrbitTrack(){
+  if(orbitLine){scene.remove(orbitLine);orbitLine.geometry.dispose();orbitLine.material.dispose();orbitLine=null;}
+}
+
+// ============================================================
+// COMMAND PALETTE — smart search with token parsing
+// ============================================================
+const CMD_SUGGESTIONS=[
+  'japan sar','japan 地球観測','starlink','leo <500km','geo communications',
+  'launched 2024','himawari','alos','gps','sentinel','iss',
+  'sar','optical','韓国','中国 leo','ロシア geo',
+];
+
+// Token parser: split query into structured filters + freetext
+function parseCommandTokens(query){
+  const tokens=query.toLowerCase().split(/\s+/).filter(t=>t);
+  const filters={countries:[],purposes:[],details:[],altMax:null,altMin:null,years:[],freetext:[]};
+  const chips=[];
+
+  for(const tok of tokens){
+    // Country match
+    let matched=false;
+    for(const [code,name] of Object.entries(OWNER_NAMES)){
+      if(tok===code.toLowerCase()||name.toLowerCase().includes(tok)){
+        filters.countries.push(code);chips.push({label:`国: ${name}`,type:'country'});matched=true;break;
+      }
+    }
+    if(matched)continue;
+
+    // Altitude filter
+    const altLt=tok.match(/^<(\d+)km?$/);
+    if(altLt){filters.altMax=parseInt(altLt[1]);chips.push({label:`高度 <${altLt[1]}km`,type:'alt'});continue;}
+    const altGt=tok.match(/^>(\d+)km?$/);
+    if(altGt){filters.altMin=parseInt(altGt[1]);chips.push({label:`高度 >${altGt[1]}km`,type:'alt'});continue;}
+
+    // Year
+    const yearMatch=tok.match(/^(19|20)\d{2}$/);
+    if(yearMatch){filters.years.push(tok);chips.push({label:`打上: ${tok}`,type:'year'});continue;}
+    if(tok==='launched')continue; // skip keyword
+
+    // Orbit type
+    if(['leo','meo','geo','heo'].includes(tok)){
+      filters.purposes.push('_orbit_'+tok);chips.push({label:tok.toUpperCase(),type:'orbit'});continue;
+    }
+
+    // Purpose
+    for(const pf of PURPOSE_FILTERS){
+      if(pf.label.toLowerCase().includes(tok)||pf.key.toLowerCase().includes(tok)){
+        filters.purposes.push(pf.key);chips.push({label:pf.label,type:'purpose'});matched=true;break;
+      }
+    }
+    if(matched)continue;
+
+    // Detail/sensor match
+    for(const df of DETAIL_FILTERS){
+      if(df.label.toLowerCase().includes(tok)||df.key.replace('_','').includes(tok)){
+        filters.details.push(...df.match);chips.push({label:df.label,type:'detail'});matched=true;break;
+      }
+    }
+    if(matched)continue;
+
+    // Freetext fallback
+    filters.freetext.push(tok);
+  }
+  return {filters,chips};
+}
+
+function buildFilterFn(filters){
+  return function(sat){
+    if(filters.countries.length&&!filters.countries.includes(sat.owner))return false;
+    if(filters.altMax!==null&&sat.altitude>filters.altMax)return false;
+    if(filters.altMin!==null&&sat.altitude<filters.altMin)return false;
+    if(filters.years.length){
+      const y=sat.launchDate?sat.launchDate.substring(0,4):'';
+      if(!filters.years.includes(y))return false;
+    }
+    for(const p of filters.purposes){
+      if(p.startsWith('_orbit_')){
+        if(sat.orbitType!==p.replace('_orbit_',''))return false;
+      }else{
+        if(sat.purpose!==p)return false;
+      }
+    }
+    if(filters.details.length&&!filters.details.includes(sat.detail))return false;
+    for(const ft of filters.freetext){
+      const hay=(sat.name+' '+sat.noradId+' '+sat.purpose+' '+sat.detail+' '+(OWNER_NAMES[sat.owner]||'')).toLowerCase();
+      if(!hay.includes(ft))return false;
+    }
+    return true;
+  };
+}
+
+function initCommandPalette(){
+  const overlay=document.getElementById('cmd-overlay');
+  const input=document.getElementById('cmd-input');
+  const chipsEl=document.getElementById('cmd-chips');
+  const suggestEl=document.getElementById('cmd-suggest');
+  const countEl=document.getElementById('cmd-count');
+  const resultsEl=document.getElementById('cmd-results');
+  let cmdDebounce=null;
+  let cmdResults=[];
+  let cmdActiveIdx=-1;
+
+  // Show suggestions
+  function showSuggestions(){
+    const picks=[];const pool=[...CMD_SUGGESTIONS];
+    for(let i=0;i<5&&pool.length;i++){const idx=Math.floor(Math.random()*pool.length);picks.push(pool.splice(idx,1)[0]);}
+    suggestEl.innerHTML='';
+    for(const s of picks){
+      const btn=document.createElement('button');btn.className='cmd-suggest-btn';btn.textContent=s;
+      btn.addEventListener('click',()=>{input.value=s;input.dispatchEvent(new Event('input'));input.focus();});
+      suggestEl.appendChild(btn);
+    }
+  }
+
+  // Open
+  function openPalette(){
+    overlay.classList.add('open');
+    input.value='';chipsEl.innerHTML='';resultsEl.innerHTML='';countEl.textContent='';
+    cmdFilterFn=null;cmdActiveIdx=-1;
+    showSuggestions();
+    setTimeout(()=>input.focus(),50);
+  }
+
+  // Close
+  function closePalette(){
+    overlay.classList.remove('open');
+    cmdFilterFn=null;cmdResults=[];
+    syncPointCloud(); // reset highlight
+  }
+
+  // Keyboard shortcut: / to open
+  document.addEventListener('keydown',e=>{
+    if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&document.activeElement.tagName!=='INPUT'){
+      e.preventDefault();openPalette();
+    }
+    if(e.key==='Escape'&&overlay.classList.contains('open')){closePalette();}
+    // Arrow navigation
+    if(overlay.classList.contains('open')){
+      if(e.key==='ArrowDown'){e.preventDefault();cmdActiveIdx=Math.min(cmdActiveIdx+1,cmdResults.length-1);updateActiveResult();}
+      if(e.key==='ArrowUp'){e.preventDefault();cmdActiveIdx=Math.max(cmdActiveIdx-1,-1);updateActiveResult();}
+      if(e.key==='Enter'&&cmdActiveIdx>=0&&cmdResults[cmdActiveIdx]){
+        e.preventDefault();selectResult(cmdResults[cmdActiveIdx]);
+      }
+    }
+  });
+
+  // Click backdrop to close
+  overlay.addEventListener('click',e=>{if(e.target===overlay)closePalette();});
+
+  // Search button in sidebar (reuse existing search tab button)
+  // Also make the search tab open the palette instead
+  const searchTabBtn=document.querySelector('[data-tab="search-tab"]');
+  if(searchTabBtn){
+    searchTabBtn.addEventListener('click',e=>{
+      e.stopPropagation();openPalette();
+      // Keep filter tab active
+      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelector('[data-tab="filter-tab"]').classList.add('active');
+    });
+  }
+
+  function updateActiveResult(){
+    resultsEl.querySelectorAll('.cmd-item').forEach((el,i)=>{
+      el.classList.toggle('active',i===cmdActiveIdx);
+      if(i===cmdActiveIdx)el.scrollIntoView({block:'nearest'});
+    });
+  }
+
+  function selectResult(sat){
+    closePalette();
+    flyToSatellite(sat);
+    showOrbitTrack(sat);
+  }
+
+  // Live search on input
+  input.addEventListener('input',()=>{
+    clearTimeout(cmdDebounce);
+    cmdDebounce=setTimeout(()=>{
+      const q=input.value.trim();
+      if(!q){
+        chipsEl.innerHTML='';resultsEl.innerHTML='';countEl.textContent='';
+        cmdFilterFn=null;cmdResults=[];suggestEl.style.display='';
+        syncPointCloud();return;
+      }
+      suggestEl.style.display='none';
+      const {filters,chips}=parseCommandTokens(q);
+
+      // Show chips
+      chipsEl.innerHTML='';
+      for(const c of chips){
+        const el=document.createElement('span');el.className='cmd-chip';el.textContent=c.label;
+        chipsEl.appendChild(el);
+      }
+
+      // Build filter and apply to globe immediately
+      const fn=buildFilterFn(filters);
+      cmdFilterFn=fn;
+      syncPointCloud();
+
+      // Find matches for result list
+      cmdResults=[];cmdActiveIdx=-1;
+      for(const sat of allSatellites){
+        if(sat.altitude<=0)continue;
+        if(fn(sat)){cmdResults.push(sat);if(cmdResults.length>=100)break;}
+      }
+
+      countEl.textContent=`${cmdResults.length}${cmdResults.length>=100?'+':''} 件がハイライト中`;
+
+      // Render results
+      resultsEl.innerHTML='';
+      for(const sat of cmdResults){
+        const item=document.createElement('div');item.className='cmd-item';
+        const detailLabel=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):'';
+        const ownerLabel=OWNER_NAMES[sat.owner]||sat.owner||'';
+        const yearLabel=sat.launchDate?sat.launchDate.substring(0,4):'';
+        item.innerHTML=`
+          <div class="ci-name${sat.isJapanese?' jpn':''}">${sat.name}</div>
+          <div class="ci-sub">
+            ${detailLabel?`<span class="ci-tag hl">${detailLabel}</span>`:''}
+            ${sat.purpose?`<span class="ci-tag">${sat.purpose}</span>`:''}
+            ${ownerLabel?`<span class="ci-tag">${ownerLabel}</span>`:''}
+            ${yearLabel?`<span class="ci-tag">${yearLabel}</span>`:''}
+            <span style="color:#333">${sat.altitude.toFixed(0)}km</span>
+          </div>`;
+        item.addEventListener('click',()=>selectResult(sat));
+        resultsEl.appendChild(item);
+      }
+    },120);
+  });
+}
+
+// ============================================================
+// SEARCH (legacy tab — now opens command palette)
 // ============================================================
 let searchDebounce=null;
 
@@ -912,7 +1269,7 @@ function initTabs(){
   // Detail panel close
   document.getElementById('dp-close').addEventListener('click',()=>{
     document.getElementById('detail-panel').style.display='none';
-    selectedSat=null;
+    selectedSat=null;clearOrbitTrack();
   });
 }
 
@@ -946,7 +1303,7 @@ async function main(){
   await loadSatelliteData();
   document.getElementById('loading').style.display='none';
   updateSatellitePositions();createSatelliteCloud();syncPointCloud();initUI();
-  initTabs();initSearch();
+  initTabs();initSearch();initCommandPalette();
   document.getElementById('update-time').textContent=new Date().toLocaleTimeString('ja-JP');
   requestAnimationFrame(animate);
 }
