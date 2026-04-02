@@ -112,6 +112,11 @@
   </div>
 
   <div class="section">
+    <label>センサー / ミッション</label>
+    <div class="tags" id="detail-filters"></div>
+  </div>
+
+  <div class="section">
     <label>軌道カテゴリ</label>
     <div class="tags" id="orbit-filters"></div>
   </div>
@@ -201,6 +206,7 @@ let allSatellites=[];
 let satMetadata={};
 let activeCountryFilter=null; // null=all, string=country code
 let activePurposeFilter=null; // null=all, string=purpose key
+let activeDetailFilter=null; // null=all, string or array of detail keys
 
 // Purpose categories for filter buttons
 const PURPOSE_FILTERS = [
@@ -227,6 +233,19 @@ const DETAIL_NAMES = {
   'Amateur Radio':'アマチュア無線','Internet of Things (IoT)':'IoT',
   'Data Relay':'データ中継','Remote Sensing':'リモートセンシング',
 };
+// Detail filters — group related types together
+const DETAIL_FILTERS = [
+  {key:'_sar',label:'SAR(レーダー)',match:['Radar Imaging','Radar Imaging (SAR)','Synthetic Aperture Radar (SAR)','Radar Imaging/Earth Science','Radar Surveillance']},
+  {key:'_optical',label:'光学撮像',match:['Optical Imaging','Optical Imaging (video)','Optical Imaging/Meterology','Video Imaging','Imaging']},
+  {key:'_multi',label:'マルチ/ハイパースペクトル',match:['Multispectral Imaging','Hyperspectral Imaging']},
+  {key:'_ir',label:'赤外撮像',match:['Infrared Imaging']},
+  {key:'_meteo',label:'気象観測',match:['Meteorology','Meteorology, Automatic Identification System (AIS)','Earth Science/Meterology','Meteorology/Earth Science']},
+  {key:'_earthsci',label:'地球科学',match:['Earth Science']},
+  {key:'_elint',label:'電子情報(ELINT)',match:['Electronic Intelligence']},
+  {key:'_ais',label:'船舶追跡(AIS)',match:['Automatic Identification System (AIS)','Maritime Surveillance']},
+  {key:'_earlywarning',label:'早期警戒',match:['Early Warning']},
+  {key:'_radio',label:'電波監視',match:['Radio Spectrum Monitoring','Radio Frequency Monitoring']},
+];
 let mouse=new THREE.Vector2(-999,-999);
 let raycaster=new THREE.Raycaster();
 raycaster.params.Points.threshold=0.04;
@@ -402,7 +421,8 @@ function syncPointCloud(){
     const show=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&
       ORBIT_CATEGORIES[sat.orbitType]?.active&&
       (!activeCountryFilter||sat.owner===activeCountryFilter)&&
-      (!activePurposeFilter||sat.purpose===activePurposeFilter);
+      (!activePurposeFilter||sat.purpose===activePurposeFilter)&&
+      (!activeDetailFilter||activeDetailFilter.includes(sat.detail));
     if(show){
       cnt++;
       if(sat.altitude>2000){
@@ -492,6 +512,31 @@ function initUI(){
       syncPointCloud();
     });
     pc.appendChild(btn);
+  }
+
+  // Detail / sensor type filter buttons
+  const detailCounts={};
+  for(const df of DETAIL_FILTERS){let c=0;for(const sat of allSatellites){if(df.match.includes(sat.detail))c++;}detailCounts[df.key]=c;}
+  const dc=document.getElementById('detail-filters');
+  const allDBtn=document.createElement('button');
+  allDBtn.className='tag active';allDBtn.innerHTML='すべて';
+  allDBtn.addEventListener('click',()=>{
+    activeDetailFilter=null;
+    dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
+    allDBtn.classList.add('active');syncPointCloud();
+  });
+  dc.appendChild(allDBtn);
+  for(const df of DETAIL_FILTERS){
+    const count=detailCounts[df.key]||0;
+    if(count===0)continue;
+    const btn=document.createElement('button');btn.className='tag';
+    btn.innerHTML=`${df.label} <span class="count">${count}</span>`;
+    btn.addEventListener('click',()=>{
+      if(activeDetailFilter&&activeDetailFilter===df.match){activeDetailFilter=null;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));allDBtn.classList.add('active');}
+      else{activeDetailFilter=df.match;dc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));btn.classList.add('country-active');}
+      syncPointCloud();
+    });
+    dc.appendChild(btn);
   }
 
   // Orbit category buttons
