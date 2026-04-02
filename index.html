@@ -605,19 +605,23 @@ function syncPointCloud(){
       c=getColorForAltitude(sat.altitude);alpha=DIM_ALPHA;
     }
 
-    if(sat.altitude>2000){
-      // Sprite
+    // Selected satellite ALWAYS gets a sprite (even LEO) so it stands out
+    if(hlState==='selected'){
       pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
       const sp=getOrCreateSprite(sat,glowTexRef.current);
       sp.visible=true;sp.position.copy(sat.position);
-      sp.scale.setScalar(sat.position.length()*(hlState==='selected'?0.12:hlState==='highlighted'?0.09:0.06));
-      sp.material.color.set(c);
-      sp.material.opacity=alpha;
+      sp.scale.setScalar(Math.max(sat.position.length()*0.15,0.2));
+      sp.material.color.set(SELECTED_COLOR);sp.material.opacity=1.0;
+    }else if(sat.altitude>2000){
+      pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
+      const sp=getOrCreateSprite(sat,glowTexRef.current);
+      sp.visible=true;sp.position.copy(sat.position);
+      sp.scale.setScalar(sat.position.length()*(hlState==='highlighted'?0.09:0.06));
+      sp.material.color.set(c);sp.material.opacity=alpha;
     }else{
-      // Point cloud
       pos[i*3]=sat.position.x;pos[i*3+1]=sat.position.y;pos[i*3+2]=sat.position.z;
       col[i*3]=c.r*alpha;col[i*3+1]=c.g*alpha;col[i*3+2]=c.b*alpha;
-      vis[i]=alpha<0.1?0.12:1.0; // dim but not invisible
+      vis[i]=alpha<0.1?0.12:1.0;
       if(sat._sprite)sat._sprite.visible=false;
     }
   }
@@ -1183,9 +1187,13 @@ function initCommandPalette(){
   }
 
   function selectResult(sat){
-    closePalette();
+    // Set selectedSat BEFORE closing palette so syncPointCloud sees it
+    selectedSat=sat;
+    overlay.classList.remove('open');
+    cmdFilterFn=null;cmdResults=[];
+    // Now sync with selectedSat already set — satellite stays highlighted
+    syncPointCloud();
     flyToSatellite(sat);
-    showOrbitTrack(sat);
   }
 
   // Live search on input
