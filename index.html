@@ -483,6 +483,29 @@ function getOrCreateSprite(sat,tex){
 }
 
 const glowTexRef={current:null};
+const HIGHLIGHT_COLOR=new THREE.Color(0xff4444); // bright red-orange for highlighted satellites
+const DIM_ALPHA=0.08; // very dim for non-highlighted when a filter is active
+const SELECTED_COLOR=new THREE.Color(0xff2222); // selected satellite from search
+
+// Check if any highlight filter is active
+function hasActiveHighlight(){
+  return activeCountryFilter||activePurposeFilter||activeDetailFilter||selectedSat;
+}
+
+// Check if a satellite matches the active highlight filters
+function isHighlighted(sat){
+  if(selectedSat&&sat===selectedSat)return 'selected';
+  const matchCountry=!activeCountryFilter||sat.owner===activeCountryFilter;
+  const matchPurpose=!activePurposeFilter||sat.purpose===activePurposeFilter;
+  const matchDetail=!activeDetailFilter||activeDetailFilter.includes(sat.detail);
+  if(activeCountryFilter&&!matchCountry)return false;
+  if(activePurposeFilter&&!matchPurpose)return false;
+  if(activeDetailFilter&&!matchDetail)return false;
+  // If at least one highlight filter is active and satellite matches all active ones
+  if(activeCountryFilter||activePurposeFilter||activeDetailFilter)return 'highlighted';
+  return 'normal';
+}
+
 function syncPointCloud(){
   if(!satPointCloud)return;
   if(!glowTexRef.current)glowTexRef.current=createGlowTexture();
@@ -491,37 +514,59 @@ function syncPointCloud(){
   const pos=satPointCloud.geometry.attributes.position.array;
   const col=satPointCloud.geometry.attributes.color.array;
   const vis=satPointCloud.geometry.attributes.visible.array;
-  let cnt=0;
+  const highlighting=hasActiveHighlight();
+  let cnt=0,hlCnt=0;
+
   for(let i=0;i<allSatellites.length;i++){
     const sat=allSatellites[i];
-    const show=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&
-      ORBIT_CATEGORIES[sat.orbitType]?.active&&
-      (!activeCountryFilter||sat.owner===activeCountryFilter)&&
-      (!activePurposeFilter||sat.purpose===activePurposeFilter)&&
-      (!activeDetailFilter||activeDetailFilter.includes(sat.detail));
-    if(show){
-      cnt++;
-      if(sat.altitude>2000){
-        pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
-        const sp=getOrCreateSprite(sat,glowTexRef.current);
-        sp.visible=true;sp.position.copy(sat.position);
-        sp.scale.setScalar(sat.position.length()*0.06);
-        sp.material.color.set(getColorForAltitude(sat.altitude));
-      }else{
-        pos[i*3]=sat.position.x;pos[i*3+1]=sat.position.y;pos[i*3+2]=sat.position.z;
-        const c=getColorForAltitude(sat.altitude);col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;
-        vis[i]=1;if(sat._sprite)sat._sprite.visible=false;
-      }
-    }else{
+    // Basic visibility: altitude range + orbit category
+    const inRange=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&
+      ORBIT_CATEGORIES[sat.orbitType]?.active;
+
+    if(!inRange){
       pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
       col[i*3]=0;col[i*3+1]=0;col[i*3+2]=0;
+      if(sat._sprite)sat._sprite.visible=false;
+      continue;
+    }
+
+    cnt++;
+    const hlState=highlighting?isHighlighted(sat):'normal';
+
+    // Determine color and brightness
+    let c,alpha;
+    if(hlState==='selected'){
+      c=SELECTED_COLOR;alpha=1.0;hlCnt++;
+    }else if(hlState==='highlighted'){
+      c=HIGHLIGHT_COLOR;alpha=1.0;hlCnt++;
+    }else if(hlState==='normal'&&!highlighting){
+      c=getColorForAltitude(sat.altitude);alpha=1.0;
+    }else{
+      // Dimmed — still visible but very faint
+      c=getColorForAltitude(sat.altitude);alpha=DIM_ALPHA;
+    }
+
+    if(sat.altitude>2000){
+      // Sprite
+      pos[i*3]=0;pos[i*3+1]=0;pos[i*3+2]=-999;vis[i]=0;
+      const sp=getOrCreateSprite(sat,glowTexRef.current);
+      sp.visible=true;sp.position.copy(sat.position);
+      sp.scale.setScalar(sat.position.length()*(hlState==='selected'?0.12:hlState==='highlighted'?0.09:0.06));
+      sp.material.color.set(c);
+      sp.material.opacity=alpha;
+    }else{
+      // Point cloud
+      pos[i*3]=sat.position.x;pos[i*3+1]=sat.position.y;pos[i*3+2]=sat.position.z;
+      col[i*3]=c.r*alpha;col[i*3+1]=c.g*alpha;col[i*3+2]=c.b*alpha;
+      vis[i]=alpha<0.1?0.12:1.0; // dim but not invisible
       if(sat._sprite)sat._sprite.visible=false;
     }
   }
   satPointCloud.geometry.attributes.position.needsUpdate=true;
   satPointCloud.geometry.attributes.color.needsUpdate=true;
   satPointCloud.geometry.attributes.visible.needsUpdate=true;
-  document.getElementById('visible-count').textContent=cnt.toLocaleString();
+  const label=highlighting?`${hlCnt.toLocaleString()} 強調 / ${cnt.toLocaleString()} 表示`:cnt.toLocaleString();
+  document.getElementById('visible-count').innerHTML=label;
 }
 
 // ============================================================
