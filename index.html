@@ -1048,16 +1048,84 @@ function initCommandPalette(){
   let cmdResults=[];
   let cmdActiveIdx=-1;
 
-  // Show suggestions
+  // Build browsable categories for initial state
   function showSuggestions(){
-    const picks=[];const pool=[...CMD_SUGGESTIONS];
-    for(let i=0;i<5&&pool.length;i++){const idx=Math.floor(Math.random()*pool.length);picks.push(pool.splice(idx,1)[0]);}
     suggestEl.innerHTML='';
-    for(const s of picks){
-      const btn=document.createElement('button');btn.className='cmd-suggest-btn';btn.textContent=s;
-      btn.addEventListener('click',()=>{input.value=s;input.dispatchEvent(new Event('input'));input.focus();});
-      suggestEl.appendChild(btn);
+    resultsEl.innerHTML='';
+    countEl.textContent='';
+
+    // Count per category
+    const countryCounts={},purposeCounts={},detailCounts={},orbitCounts={},yearCounts={};
+    for(const sat of allSatellites){
+      if(sat.altitude<=0)continue;
+      if(sat.owner)countryCounts[sat.owner]=(countryCounts[sat.owner]||0)+1;
+      if(sat.purpose)purposeCounts[sat.purpose]=(purposeCounts[sat.purpose]||0)+1;
+      if(sat.detail)detailCounts[sat.detail]=(detailCounts[sat.detail]||0)+1;
+      orbitCounts[sat.orbitType]=(orbitCounts[sat.orbitType]||0)+1;
+      if(sat.launchDate){const y=sat.launchDate.substring(0,4);yearCounts[y]=(yearCounts[y]||0)+1;}
     }
+
+    function makeSection(title,items){
+      const sec=document.createElement('div');
+      sec.style.cssText='padding:8px 14px;border-bottom:1px solid #1a1a1a;';
+      sec.innerHTML=`<div style="font-size:9px;color:#555;margin-bottom:6px;">${title}</div>`;
+      const wrap=document.createElement('div');
+      wrap.style.cssText='display:flex;flex-wrap:wrap;gap:4px;';
+      for(const item of items){
+        const btn=document.createElement('button');btn.className='cmd-suggest-btn';
+        btn.innerHTML=`${item.label} <span style="color:#444;margin-left:2px;">${item.count}</span>`;
+        btn.addEventListener('click',()=>{input.value=item.query;input.dispatchEvent(new Event('input'));input.focus();});
+        wrap.appendChild(btn);
+      }
+      sec.appendChild(wrap);
+      return sec;
+    }
+
+    // Countries
+    const countries=COUNTRY_FILTERS
+      .map(cf=>({label:cf.label,count:countryCounts[cf.code]||0,query:cf.label.toLowerCase()}))
+      .filter(c=>c.count>0)
+      .sort((a,b)=>b.count-a.count);
+    resultsEl.appendChild(makeSection('国・地域',countries));
+
+    // Orbit types
+    const orbits=[
+      {label:'LEO 低軌道',count:orbitCounts['leo']||0,query:'leo'},
+      {label:'MEO 中軌道',count:orbitCounts['meo']||0,query:'meo'},
+      {label:'GEO 静止軌道',count:orbitCounts['geo']||0,query:'geo'},
+      {label:'HEO 高軌道',count:orbitCounts['heo']||0,query:'heo'},
+    ];
+    resultsEl.appendChild(makeSection('軌道',orbits));
+
+    // Purpose
+    const purposes=PURPOSE_FILTERS
+      .map(pf=>({label:pf.label,count:purposeCounts[pf.key]||0,query:pf.label.toLowerCase()}))
+      .filter(p=>p.count>0)
+      .sort((a,b)=>b.count-a.count);
+    resultsEl.appendChild(makeSection('衛星種別',purposes));
+
+    // Sensors
+    const sensors=DETAIL_FILTERS
+      .map(df=>{let c=0;for(const m of df.match)c+=(detailCounts[m]||0);return{label:df.label,count:c,query:df.label.split('(')[0].trim().toLowerCase()};})
+      .filter(s=>s.count>0)
+      .sort((a,b)=>b.count-a.count);
+    resultsEl.appendChild(makeSection('センサー / ミッション',sensors));
+
+    // Recent launch years (newest first, top 8)
+    const years=Object.entries(yearCounts)
+      .sort((a,b)=>b[0].localeCompare(a[0]))
+      .slice(0,10)
+      .map(([y,c])=>({label:y+'年',count:c,query:y}));
+    resultsEl.appendChild(makeSection('打上年',years));
+
+    // Quick combos
+    const combos=[
+      {label:'日本 SAR',query:'japan sar'},{label:'日本 地球観測',query:'japan 地球観測'},
+      {label:'中国 LEO',query:'中国 leo'},{label:'米国 GEO',query:'米国 geo'},
+      {label:'低軌道 <500km',query:'leo <500km'},{label:'Starlink',query:'starlink'},
+      {label:'Sentinel',query:'sentinel'},{label:'ISS',query:'iss'},
+    ];
+    resultsEl.appendChild(makeSection('クイック検索',combos));
   }
 
   // Open
@@ -1126,11 +1194,9 @@ function initCommandPalette(){
     cmdDebounce=setTimeout(()=>{
       const q=input.value.trim();
       if(!q){
-        chipsEl.innerHTML='';resultsEl.innerHTML='';countEl.textContent='';
-        cmdFilterFn=null;cmdResults=[];suggestEl.style.display='';
-        syncPointCloud();return;
+        chipsEl.innerHTML='';cmdFilterFn=null;cmdResults=[];
+        showSuggestions();syncPointCloud();return;
       }
-      suggestEl.style.display='none';
       const {filters,chips}=parseCommandTokens(q);
 
       // Show chips
