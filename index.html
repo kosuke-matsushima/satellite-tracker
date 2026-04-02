@@ -107,6 +107,11 @@
   </div>
 
   <div class="section">
+    <label>衛星種別</label>
+    <div class="tags" id="purpose-filters"></div>
+  </div>
+
+  <div class="section">
     <label>軌道カテゴリ</label>
     <div class="tags" id="orbit-filters"></div>
   </div>
@@ -138,6 +143,7 @@
   <div class="name" id="tt-name"></div>
   <div class="detail" id="tt-owner"></div>
   <div class="detail" id="tt-type"></div>
+  <div class="detail" id="tt-purpose"></div>
   <div class="detail" id="tt-launch"></div>
   <div class="detail" id="tt-norad"></div>
   <div class="detail" id="tt-alt"></div>
@@ -194,6 +200,33 @@ let scene,camera,renderer,earth,atmosphere,satPointCloud;
 let allSatellites=[];
 let satMetadata={};
 let activeCountryFilter=null; // null=all, string=country code
+let activePurposeFilter=null; // null=all, string=purpose key
+
+// Purpose categories for filter buttons
+const PURPOSE_FILTERS = [
+  {key:'Communications',label:'通信'},
+  {key:'Earth Observation',label:'地球観測'},
+  {key:'Navigation/Global Positioning',label:'測位'},
+  {key:'Space Science',label:'宇宙科学'},
+  {key:'Surveillance',label:'監視'},
+  {key:'Technology Development',label:'技術開発'},
+  {key:'Earth Science',label:'地球科学'},
+  {key:'Meteorological',label:'気象'},
+];
+// Detail → Japanese label for tooltip
+const DETAIL_NAMES = {
+  'Optical Imaging':'光学撮像','Radar Imaging':'レーダー撮像(SAR)',
+  'Radar Imaging (SAR)':'SAR撮像','Multispectral Imaging':'マルチスペクトル撮像',
+  'Hyperspectral Imaging':'ハイパースペクトル撮像','Infrared Imaging':'赤外撮像',
+  'Video Imaging':'動画撮像','Meteorology':'気象観測',
+  'Electronic Intelligence':'電子情報収集(ELINT)','Early Warning':'早期警戒',
+  'Earth Science':'地球科学','Automatic Identification System (AIS)':'船舶追跡(AIS)',
+  'Radar Imaging/Earth Science':'SAR/地球科学','Radio Spectrum Monitoring':'電波監視',
+  'Meteorology, Automatic Identification System (AIS)':'気象/AIS',
+  'Earth Science/Meterology':'地球科学/気象','Maritime Surveillance':'海洋監視',
+  'Amateur Radio':'アマチュア無線','Internet of Things (IoT)':'IoT',
+  'Data Relay':'データ中継','Remote Sensing':'リモートセンシング',
+};
 let mouse=new THREE.Vector2(-999,-999);
 let raycaster=new THREE.Raycaster();
 raycaster.params.Points.threshold=0.04;
@@ -271,6 +304,7 @@ async function loadSatelliteData(){
         position:new THREE.Vector3(),altitude:0,velocity:0,lat:0,lon:0,orbitType:'leo',
         owner:meta.owner||'',launchDate:meta.launch||'',launchSite:meta.site||'',
         objType:meta.type||'',isJapanese:!!meta.jpn,
+        purpose:meta.purpose||'',detail:meta.detail||'',users:meta.users||'',
       });ok++;
     }catch(e){ng++;}
   }
@@ -367,7 +401,8 @@ function syncPointCloud(){
     const sat=allSatellites[i];
     const show=sat.altitude>=0&&sat.altitude>=altMin&&sat.altitude<=altMax&&
       ORBIT_CATEGORIES[sat.orbitType]?.active&&
-      (!activeCountryFilter||sat.owner===activeCountryFilter);
+      (!activeCountryFilter||sat.owner===activeCountryFilter)&&
+      (!activePurposeFilter||sat.purpose===activePurposeFilter);
     if(show){
       cnt++;
       if(sat.altitude>2000){
@@ -432,6 +467,31 @@ function initUI(){
       syncPointCloud();
     });
     cc.appendChild(btn);
+  }
+
+  // Purpose filter buttons
+  const purposeCounts={};
+  for(const sat of allSatellites){const p=sat.purpose;if(p)purposeCounts[p]=(purposeCounts[p]||0)+1;}
+  const pc=document.getElementById('purpose-filters');
+  const allPBtn=document.createElement('button');
+  allPBtn.className='tag active';allPBtn.innerHTML=`すべて`;
+  allPBtn.addEventListener('click',()=>{
+    activePurposeFilter=null;
+    pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));
+    allPBtn.classList.add('active');syncPointCloud();
+  });
+  pc.appendChild(allPBtn);
+  for(const pf of PURPOSE_FILTERS){
+    const count=purposeCounts[pf.key]||0;
+    if(count===0)continue;
+    const btn=document.createElement('button');btn.className='tag';
+    btn.innerHTML=`${pf.label} <span class="count">${count}</span>`;
+    btn.addEventListener('click',()=>{
+      if(activePurposeFilter===pf.key){activePurposeFilter=null;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));allPBtn.classList.add('active');}
+      else{activePurposeFilter=pf.key;pc.querySelectorAll('.tag').forEach(b=>b.classList.remove('active','country-active'));btn.classList.add('country-active');}
+      syncPointCloud();
+    });
+    pc.appendChild(btn);
   }
 
   // Orbit category buttons
@@ -499,6 +559,9 @@ function showTooltipForSat(sat){
   document.getElementById('tt-name').style.color=sat.isJapanese?'#ff6666':'#7affc1';
   document.getElementById('tt-owner').textContent=`運用: ${OWNER_NAMES[sat.owner]||sat.owner||'不明'}`;
   document.getElementById('tt-type').textContent=`種別: ${OBJ_TYPE_NAMES[sat.objType]||sat.objType||'不明'}`;
+  const purposeStr=sat.purpose?(OWNER_NAMES[sat.purpose]||sat.purpose):'';
+  const detailStr=sat.detail?(DETAIL_NAMES[sat.detail]||sat.detail):'';
+  document.getElementById('tt-purpose').textContent=purposeStr||detailStr?`目的: ${purposeStr}${detailStr?' / '+detailStr:''}`:'';
   let ls='';if(sat.launchDate){ls=`打上: ${sat.launchDate}`;const sn=LAUNCH_SITE_NAMES[sat.launchSite]||sat.launchSite;if(sn)ls+=` (${sn})`;}
   document.getElementById('tt-launch').textContent=ls;
   document.getElementById('tt-norad').textContent=`NORAD: ${sat.noradId}`;
